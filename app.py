@@ -111,6 +111,40 @@ for col_box, (label, col_name) in zip(cols, metrics):
 
 st.caption(f"比較対象期間：{prev_start_date} 〜 {prev_end_date}")
 
+# 掲載開始からの累計
+start_from_first = daily_df[
+    daily_df["広告セット名"] == selected_adset
+]["レポート開始日"].min().date()
+
+days_from_start = (end_date - start_from_first).days + 1
+
+cumulative_df = daily_df[
+    (daily_df["広告セット名"] == selected_adset)
+    & (daily_df["レポート開始日"].dt.date >= start_from_first)
+    & (daily_df["レポート開始日"].dt.date <= end_date)
+].copy()
+
+st.subheader("掲載開始からの累計")
+st.caption(f"掲載 {days_from_start} 日目（{start_from_first} 〜 {end_date}）")
+
+cumulative_metrics = [
+    ("インプレッション", "インプレッション"),
+    ("リーチ", "リーチ"),
+    ("リンククリック（すべて）", "クリック(すべて)"),
+    ("リンククリック", "リンククリック"),
+    ("LPビュー", "ランディングページビュー"),
+]
+
+cum_cols = st.columns(5)
+
+for col_box, (label, col_name) in zip(cum_cols, cumulative_metrics):
+    cum_val = total(cumulative_df, col_name)
+
+    col_box.metric(
+        label=label,
+        value=f"{cum_val:,.0f}"
+    )
+
 st.subheader("日別推移")
 
 daily_summary = filtered_df.groupby(
