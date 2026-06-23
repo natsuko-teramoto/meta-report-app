@@ -14,6 +14,10 @@ st.title("Meta広告レポート")
 DAILY_DIR = Path("data/daily")
 PLACE_DIR = Path("data/place")
 
+st.write("現在地", Path.cwd())
+st.write("daily exists", DAILY_DIR.exists())
+st.write("daily files", list(DAILY_DIR.glob("*.xlsx")))
+
 def read_excel_folder(folder):
     files = list(folder.glob("*.xlsx"))
 
