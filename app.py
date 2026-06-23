@@ -73,19 +73,37 @@ def diff_rate(current, prev):
         return None
     return ((current - prev) / prev) * 100
 
-# 抽出条件の表示
+# =========================
+# 抽出条件
+# =========================
+
 st.subheader("抽出条件")
 
-col1, col2 = st.columns(2)
+# 掲載開始日
+start_from_first = daily_df[
+    daily_df["広告セット名"] == selected_adset
+]["レポート開始日"].min().date()
 
-with col1:
+# 累計掲載日数
+days_from_start = (end_date - start_from_first).days + 1
+
+cond_cols = st.columns(3)
+
+with cond_cols[0]:
     st.metric("広告セット", selected_adset)
 
-with col2:
-    st.metric("対象期間", f"{start_date} 〜 {end_date}")
+with cond_cols[1]:
+    st.metric("掲載開始日", str(start_from_first))
+
+with cond_cols[2]:
+    st.metric("累計掲載日数", f"{days_from_start} 日")
 
 
-st.subheader("前月比較")
+# =========================
+# 当月実績（対象期間）
+# =========================
+
+st.subheader(f"数値実績（{start_date} 〜 {end_date}）")
 
 metrics = [
     ("インプレッション", "インプレッション"),
@@ -96,12 +114,13 @@ metrics = [
 ]
 
 cols = st.columns(5)
+
 for col_box, (label, col_name) in zip(cols, metrics):
     current_val = total(filtered_df, col_name)
     prev_val = total(prev_df, col_name)
     rate = diff_rate(current_val, prev_val)
 
-    delta_text = "-" if rate is None else f"{rate:.1f}%"
+    delta_text = "-" if rate is None else f"前月比 {rate:.1f}%"
 
     col_box.metric(
         label=label,
@@ -111,12 +130,10 @@ for col_box, (label, col_name) in zip(cols, metrics):
 
 st.caption(f"比較対象期間：{prev_start_date} 〜 {prev_end_date}")
 
-# 掲載開始からの累計
-start_from_first = daily_df[
-    daily_df["広告セット名"] == selected_adset
-]["レポート開始日"].min().date()
 
-days_from_start = (end_date - start_from_first).days + 1
+# =========================
+# 掲載開始からの累計
+# =========================
 
 cumulative_df = daily_df[
     (daily_df["広告セット名"] == selected_adset)
@@ -125,19 +142,10 @@ cumulative_df = daily_df[
 ].copy()
 
 st.subheader("掲載開始からの累計")
-st.caption(f"掲載 {days_from_start} 日目（{start_from_first} 〜 {end_date}）")
-
-cumulative_metrics = [
-    ("インプレッション", "インプレッション"),
-    ("リーチ", "リーチ"),
-    ("リンククリック（すべて）", "クリック(すべて)"),
-    ("リンククリック", "リンククリック"),
-    ("LPビュー", "ランディングページビュー"),
-]
 
 cum_cols = st.columns(5)
 
-for col_box, (label, col_name) in zip(cum_cols, cumulative_metrics):
+for col_box, (label, col_name) in zip(cum_cols, metrics):
     cum_val = total(cumulative_df, col_name)
 
     col_box.metric(
@@ -145,7 +153,77 @@ for col_box, (label, col_name) in zip(cum_cols, cumulative_metrics):
         value=f"{cum_val:,.0f}"
     )
 
-st.subheader("日別推移")
+# =========================
+# 掲載開始からの詳細（30日刻み）
+# =========================
+
+st.subheader("掲載開始からの詳細")
+
+detail_df = daily_df[
+    (daily_df["広告セット名"] == selected_adset)
+    & (daily_df["レポート開始日"].dt.date >= start_from_first)
+    & (daily_df["レポート開始日"].dt.date <= end_date)
+].copy()
+
+detail_df["経過日数"] = (
+    detail_df["レポート開始日"].dt.date - start_from_first
+).apply(lambda x: x.days + 1)
+
+detail_df["期間No"] = ((detail_df["経過日数"] - 1) // 30) + 1
+
+detail_df["期間開始日"] = detail_df["期間No"].apply(
+    lambda x: start_from_first + pd.Timedelta(days=(x - 1) * 30)
+)
+
+detail_df["期間終了日"] = detail_df["期間No"].apply(
+    lambda x: min(start_from_first + pd.Timedelta(days=x * 30 - 1), end_date)
+)
+
+detail_df["期間"] = (
+    detail_df["期間開始日"].astype(str)
+    + " 〜 "
+    + detail_df["期間終了日"].astype(str)
+)
+
+detail_summary = (
+    detail_df
+    .groupby(["期間No", "期間"], as_index=False)
+    .agg({
+        "インプレッション": "sum",
+        "リーチ": "sum",
+        "クリック(すべて)": "sum",
+        "リンククリック": "sum",
+        "ランディングページビュー": "sum"
+    })
+)
+
+detail_summary = detail_summary.rename(
+    columns={
+        "クリック(すべて)": "リンククリック（すべて）",
+        "ランディングページビュー": "LPビュー"
+    }
+)
+
+detail_summary = detail_summary.sort_values("期間No", ascending=False)
+
+st.dataframe(
+    detail_summary[
+        [
+            "期間",
+            "インプレッション",
+            "リーチ",
+            "リンククリック（すべて）",
+            "リンククリック",
+            "LPビュー"
+        ]
+    ],
+    width="stretch",
+    hide_index=True
+)
+
+# =========================
+# 日別推移用データ
+# =========================
 
 daily_summary = filtered_df.groupby(
     "レポート開始日",
