@@ -37,8 +37,6 @@ place_df.columns = place_df.columns.str.strip()
 
 st.sidebar.header("条件選択")
 
-st.write("daily_df columns", daily_df.columns.tolist())
-
 adsets = sorted(daily_df["広告セット名"].dropna().astype(str).unique())
 
 selected_adset = st.sidebar.selectbox(
