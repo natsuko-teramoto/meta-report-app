@@ -170,7 +170,7 @@ if show_lp:
         ("LPビュー", "ランディングページビュー")
     )
 
-cols = st.columns(5)
+cols = st.columns(len(metrics))
 
 reach_total = total(filtered_df, "リーチ")
 
