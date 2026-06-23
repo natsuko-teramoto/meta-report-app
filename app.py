@@ -44,8 +44,48 @@ selected_adset = st.sidebar.selectbox(
     adsets
 )
 
+show_adset_name = st.sidebar.checkbox(
+    "広告セット名を表示",
+    value=True
+)
+
+show_start_date = st.sidebar.checkbox(
+    "掲載開始日を表示",
+    value=True
+)
+
+show_elapsed_days = st.sidebar.checkbox(
+    "累計掲載日数を表示",
+    value=True
+)
+
 show_lp = st.sidebar.checkbox(
     "LPビューを表示",
+    value=True
+)
+
+show_detail_table = st.sidebar.checkbox(
+    "掲載開始からの詳細を表示",
+    value=True
+)
+
+show_cumulative_awareness = st.sidebar.checkbox(
+    "累計認知推移を表示",
+    value=True
+)
+
+show_cumulative_action = st.sidebar.checkbox(
+    "累計行動推移を表示",
+    value=True
+)
+
+show_awareness = st.sidebar.checkbox(
+    "認知推移を表示",
+    value=True
+)
+
+show_action = st.sidebar.checkbox(
+    "行動推移を表示",
     value=True
 )
 
@@ -82,31 +122,35 @@ def diff_rate(current, prev):
         return None
     return ((current - prev) / prev) * 100
 
+# 掲載開始日・累計掲載日数
+start_from_first = daily_df[
+    daily_df["広告セット名"] == selected_adset
+]["レポート開始日"].min().date()
+
+days_from_start = (end_date - start_from_first).days + 1
 # =========================
 # 抽出条件
 # =========================
 
 st.subheader("抽出条件")
 
-# 掲載開始日
-start_from_first = daily_df[
-    daily_df["広告セット名"] == selected_adset
-]["レポート開始日"].min().date()
+condition_items = []
 
-# 累計掲載日数
-days_from_start = (end_date - start_from_first).days + 1
+if show_adset_name:
+    condition_items.append(("広告セット", selected_adset))
 
-cond_cols = st.columns(3)
+if show_start_date:
+    condition_items.append(("掲載開始日", str(start_from_first)))
 
-with cond_cols[0]:
-    st.metric("広告セット", selected_adset)
+if show_elapsed_days:
+    condition_items.append(("累計掲載日数", f"{days_from_start} 日"))
 
-with cond_cols[1]:
-    st.metric("掲載開始日", str(start_from_first))
+if condition_items:
+    cond_cols = st.columns(len(condition_items))
 
-with cond_cols[2]:
-    st.metric("累計掲載日数", f"{days_from_start} 日")
-
+    for col, (label, value) in zip(cond_cols, condition_items):
+        with col:
+            st.metric(label, value)
 
 # =========================
 # 当月実績（対象期間）
@@ -138,6 +182,15 @@ for col_box, (label, col_name) in zip(cols, metrics):
     delta_text = "-" if rate is None else f"前月比 {rate:.1f}%"
 
     display_value = f"{current_val:,.0f}"
+
+    if col_name == "インプレッション":
+        if reach_total > 0:
+            frequency = current_val / reach_total
+
+            display_value = (
+                f"{current_val:,.0f}"
+                f" ({frequency:.2f})"
+            )
 
     if col_name in [
         "クリック(すべて)",
@@ -187,34 +240,115 @@ cum_cols = st.columns(5)
 
 cum_reach_total = total(cumulative_df, "リーチ")
 
+cum_cols = st.columns(len(metrics))
+
 for col_box, (label, col_name) in zip(cum_cols, metrics):
 
     cum_val = total(cumulative_df, col_name)
 
     display_value = f"{cum_val:,.0f}"
 
-    if col_name in [
+    if col_name == "インプレッション":
+        if cum_reach_total > 0:
+            frequency = cum_val / cum_reach_total
+            display_value = f"{cum_val:,.0f} ({frequency:.2f})"
+
+    elif col_name in [
         "クリック(すべて)",
         "リンククリック",
         "ランディングページビュー"
     ]:
         if cum_reach_total > 0:
             reach_rate = cum_val / cum_reach_total * 100
-
-            display_value = (
-                f"{cum_val:,.0f}"
-                f" ({reach_rate:.2f}%)"
-            )
+            display_value = f"{cum_val:,.0f} ({reach_rate:.2f}%)"
 
     col_box.metric(
         label=label,
         value=display_value
     )
 # =========================
-# 掲載開始からの詳細（30日刻み）
+# 掲載開始からの累計推移
 # =========================
 
-st.subheader("掲載開始からの詳細")
+
+
+cumulative_trend = daily_df[
+    (daily_df["広告セット名"] == selected_adset)
+    & (daily_df["レポート開始日"].dt.date >= start_from_first)
+    & (daily_df["レポート開始日"].dt.date <= end_date)
+].copy()
+
+cumulative_trend = (
+    cumulative_trend
+    .groupby("レポート開始日", as_index=False)
+    .agg({
+        "インプレッション": "sum",
+        "リーチ": "sum",
+        "クリック(すべて)": "sum",
+        "リンククリック": "sum",
+        "ランディングページビュー": "sum"
+    })
+)
+
+cumulative_trend = cumulative_trend.sort_values("レポート開始日")
+
+cumulative_trend["累計インプレッション"] = cumulative_trend["インプレッション"].cumsum()
+cumulative_trend["累計リーチ"] = cumulative_trend["リーチ"].cumsum()
+cumulative_trend["累計クリック(すべて)"] = cumulative_trend["クリック(すべて)"].cumsum()
+cumulative_trend["累計リンククリック"] = cumulative_trend["リンククリック"].cumsum()
+cumulative_trend["累計LPビュー"] = cumulative_trend["ランディングページビュー"].cumsum()
+
+if show_cumulative_awareness:
+    # 認知累計
+    fig_cum_awareness = px.line(
+        cumulative_trend,
+        x="レポート開始日",
+        y=[
+            "累計インプレッション",
+            "累計リーチ"
+        ],
+        markers=True,
+        title="累計推移：インプレッション・リーチ"
+    )
+
+    fig_cum_awareness.update_traces(line=dict(width=3))
+
+    fig_cum_awareness.data[0].line.color = "#4F81BD"
+    fig_cum_awareness.data[1].line.color = "#1F497D"
+
+    st.plotly_chart(fig_cum_awareness, width="stretch")
+
+if show_cumulative_action:
+    # 行動累計
+    cum_action_y = [
+        "累計クリック(すべて)",
+        "累計リンククリック",
+    ]
+
+    if show_lp:
+        cum_action_y.append("累計LPビュー")
+
+    fig_cum_action = px.line(
+        cumulative_trend,
+        x="レポート開始日",
+        y=cum_action_y,
+        markers=True,
+        title="累計推移：クリック・LPビュー"
+    )
+
+    fig_cum_action.update_traces(line=dict(width=3))
+
+    fig_cum_action.data[0].line.color = "#808080"
+    fig_cum_action.data[1].line.color = "#F79646"
+
+    if show_lp and len(fig_cum_action.data) >= 3:
+        fig_cum_action.data[2].line.color = "#00B050"
+
+    st.plotly_chart(fig_cum_action, width="stretch")
+
+# =========================
+# 掲載開始からの詳細（30日刻み）
+# =========================
 
 detail_df = daily_df[
     (daily_df["広告セット名"] == selected_adset)
@@ -280,7 +414,16 @@ detail_summary["LPビュー"] = detail_summary.apply(
 )
 
 # 表示用の数値整形
-detail_summary["インプレッション"] = detail_summary["インプレッション"].map(lambda x: f"{x:,.0f}")
+# インプレッションにフリークエンシーを追加
+detail_summary["インプレッション"] = detail_summary.apply(
+    lambda row: (
+        f'{row["インプレッション"]:,.0f} ({row["インプレッション"] / row["リーチ"]:.2f})'
+        if row["リーチ"] > 0 else f'{row["インプレッション"]:,.0f}'
+    ),
+    axis=1
+)
+
+# リーチは通常表示
 detail_summary["リーチ"] = detail_summary["リーチ"].map(lambda x: f"{x:,.0f}")
 
 detail_summary = detail_summary.sort_values("期間No", ascending=False)
@@ -296,11 +439,14 @@ detail_cols = [
 if show_lp:
     detail_cols.append("LPビュー")
 
-st.dataframe(
-    detail_summary[detail_cols],
-    width="stretch",
-    hide_index=True
-)
+if show_detail_table:
+    st.subheader("掲載開始からの詳細")
+
+    st.dataframe(
+        detail_summary[detail_cols],
+        width="stretch",
+        hide_index=True
+    )
 # =========================
 # 日別推移用データ
 # =========================
@@ -315,55 +461,56 @@ daily_summary = filtered_df.groupby(
     "リンククリック": "sum",
     "ランディングページビュー": "sum"
 })
+if show_awareness:
+    # ==================
+    # 認知
+    # ==================
 
-# ==================
-# 認知
-# ==================
+    fig1 = px.line(
+        daily_summary,
+        x="レポート開始日",
+        y=["インプレッション", "リーチ"],
+        markers=True,
+        title="認知推移"
+    )
 
-fig1 = px.line(
-    daily_summary,
-    x="レポート開始日",
-    y=["インプレッション", "リーチ"],
-    markers=True,
-    title="認知推移"
-)
+    fig1.update_traces(line=dict(width=3))
 
-fig1.update_traces(line=dict(width=3))
+    fig1.data[0].line.color = "#4F81BD"
+    fig1.data[1].line.color = "#1F497D"
 
-fig1.data[0].line.color = "#4F81BD"
-fig1.data[1].line.color = "#1F497D"
+    st.plotly_chart(fig1, width="stretch")
 
-st.plotly_chart(fig1, width="stretch")
+if show_action:
+    # ==================
+    # 行動
+    # ==================
 
-# ==================
-# 行動
-# ==================
+    action_y = [
+        "クリック(すべて)",
+        "リンククリック"
+    ]
 
-action_y = [
-    "クリック(すべて)",
-    "リンククリック"
-]
+    if show_lp:
+        action_y.append("ランディングページビュー")
 
-if show_lp:
-    action_y.append("ランディングページビュー")
+    fig2 = px.line(
+        daily_summary,
+        x="レポート開始日",
+        y=action_y,
+        markers=True,
+        title="行動推移"
+    )
 
-fig2 = px.line(
-    daily_summary,
-    x="レポート開始日",
-    y=action_y,
-    markers=True,
-    title="行動推移"
-)
+    fig2.update_traces(line=dict(width=3))
 
-fig2.update_traces(line=dict(width=3))
+    fig2.data[0].line.color = "#808080"
+    fig2.data[1].line.color = "#F79646"
 
-fig2.data[0].line.color = "#808080"
-fig2.data[1].line.color = "#F79646"
+    if show_lp and len(fig2.data) >= 3:
+        fig2.data[2].line.color = "#00B050"
 
-if show_lp and len(fig2.data) >= 3:
-    fig2.data[2].line.color = "#00B050"
-
-st.plotly_chart(fig2, width="stretch")
+    st.plotly_chart(fig2, width="stretch")
 
 st.subheader("男女・年齢分析")
 
@@ -604,10 +751,16 @@ place_summary["LPビュー"] = place_summary.apply(
     axis=1
 )
 
-place_summary["インプレッション"] = place_summary["インプレッション"].map(
-    lambda x: f"{x:,.0f}"
+# インプレッションにフリークエンシーを追加
+place_summary["インプレッション"] = place_summary.apply(
+    lambda row: (
+        f'{row["インプレッション"]:,.0f} ({row["インプレッション"] / row["リーチ"]:.2f})'
+        if row["リーチ"] > 0 else f'{row["インプレッション"]:,.0f}'
+    ),
+    axis=1
 )
 
+# リーチは通常表示
 place_summary["リーチ"] = place_summary["リーチ"].map(
     lambda x: f"{x:,.0f}"
 )
