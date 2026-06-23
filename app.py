@@ -14,7 +14,7 @@ st.title("Meta広告レポート")
 DAILY_DIR = Path("data/daily")
 PLACE_DIR = Path("data/place")
 
-
+@st.cache_data
 def read_excel_folder(folder):
     files = list(folder.glob("*.xlsx"))
 
