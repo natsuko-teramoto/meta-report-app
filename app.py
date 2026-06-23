@@ -14,9 +14,6 @@ st.title("Meta広告レポート")
 DAILY_DIR = Path("data/daily")
 PLACE_DIR = Path("data/place")
 
-st.write("現在地", Path.cwd())
-st.write("daily exists", DAILY_DIR.exists())
-st.write("daily files", list(DAILY_DIR.glob("*.xlsx")))
 
 def read_excel_folder(folder):
     files = list(folder.glob("*.xlsx"))
@@ -35,9 +32,14 @@ def read_excel_folder(folder):
 daily_df = read_excel_folder(DAILY_DIR)
 place_df = read_excel_folder(PLACE_DIR)
 
+daily_df.columns = daily_df.columns.str.strip()
+place_df.columns = place_df.columns.str.strip()
+
 st.sidebar.header("条件選択")
 
-adsets = sorted(daily_df["広告セット名"].dropna().unique())
+st.write("daily_df columns", daily_df.columns.tolist())
+
+adsets = sorted(daily_df["広告セット名"].dropna().astype(str).unique())
 
 selected_adset = st.sidebar.selectbox(
     "医院・広告セットを選択",
