@@ -44,6 +44,11 @@ selected_adset = st.sidebar.selectbox(
     adsets
 )
 
+show_lp = st.sidebar.checkbox(
+    "LPビューを表示",
+    value=True
+)
+
 daily_df["レポート開始日"] = pd.to_datetime(daily_df["レポート開始日"])
 
 min_date = daily_df["レポート開始日"].min().date()
@@ -114,10 +119,16 @@ metrics = [
     ("リーチ", "リーチ"),
     ("リンククリック（すべて）", "クリック(すべて)"),
     ("リンククリック", "リンククリック"),
-    ("LPビュー", "ランディングページビュー"),
 ]
 
+if show_lp:
+    metrics.append(
+        ("LPビュー", "ランディングページビュー")
+    )
+
 cols = st.columns(5)
+
+reach_total = total(filtered_df, "リーチ")
 
 for col_box, (label, col_name) in zip(cols, metrics):
     current_val = total(filtered_df, col_name)
@@ -126,11 +137,36 @@ for col_box, (label, col_name) in zip(cols, metrics):
 
     delta_text = "-" if rate is None else f"前月比 {rate:.1f}%"
 
+    display_value = f"{current_val:,.0f}"
+
+    if col_name in [
+        "クリック(すべて)",
+        "リンククリック",
+        "ランディングページビュー"
+    ]:
+        if reach_total > 0:
+            reach_rate = current_val / reach_total * 100
+            display_value = (
+                f"{current_val:,.0f}"
+                f" ({reach_rate:.2f}%)"
+            )
+
     col_box.metric(
         label=label,
-        value=f"{current_val:,.0f}",
+        value=display_value,
         delta=delta_text
     )
+    reach_rate = None
+
+    if col_name in [
+        "クリック(すべて)",
+        "リンククリック",
+        "ランディングページビュー"
+    ]:
+        if reach_total > 0:
+            reach_rate = current_val / reach_total * 100
+
+
 
 st.caption(f"比較対象期間：{prev_start_date} 〜 {prev_end_date}")
 
@@ -149,14 +185,31 @@ st.subheader("掲載開始からの累計")
 
 cum_cols = st.columns(5)
 
+cum_reach_total = total(cumulative_df, "リーチ")
+
 for col_box, (label, col_name) in zip(cum_cols, metrics):
+
     cum_val = total(cumulative_df, col_name)
+
+    display_value = f"{cum_val:,.0f}"
+
+    if col_name in [
+        "クリック(すべて)",
+        "リンククリック",
+        "ランディングページビュー"
+    ]:
+        if cum_reach_total > 0:
+            reach_rate = cum_val / cum_reach_total * 100
+
+            display_value = (
+                f"{cum_val:,.0f}"
+                f" ({reach_rate:.2f}%)"
+            )
 
     col_box.metric(
         label=label,
-        value=f"{cum_val:,.0f}"
+        value=display_value
     )
-
 # =========================
 # 掲載開始からの詳細（30日刻み）
 # =========================
@@ -201,30 +254,53 @@ detail_summary = (
     })
 )
 
-detail_summary = detail_summary.rename(
-    columns={
-        "クリック(すべて)": "リンククリック（すべて）",
-        "ランディングページビュー": "LPビュー"
-    }
+# リーチ比を追加
+detail_summary["リンククリック（すべて）"] = detail_summary.apply(
+    lambda row: (
+        f'{row["クリック(すべて)"]:,.0f} ({row["クリック(すべて)"] / row["リーチ"] * 100:.2f}%)'
+        if row["リーチ"] > 0 else f'{row["クリック(すべて)"]:,.0f}'
+    ),
+    axis=1
 )
+
+detail_summary["リンククリック"] = detail_summary.apply(
+    lambda row: (
+        f'{row["リンククリック"]:,.0f} ({row["リンククリック"] / row["リーチ"] * 100:.2f}%)'
+        if row["リーチ"] > 0 else f'{row["リンククリック"]:,.0f}'
+    ),
+    axis=1
+)
+
+detail_summary["LPビュー"] = detail_summary.apply(
+    lambda row: (
+        f'{row["ランディングページビュー"]:,.0f} ({row["ランディングページビュー"] / row["リーチ"] * 100:.2f}%)'
+        if row["リーチ"] > 0 else f'{row["ランディングページビュー"]:,.0f}'
+    ),
+    axis=1
+)
+
+# 表示用の数値整形
+detail_summary["インプレッション"] = detail_summary["インプレッション"].map(lambda x: f"{x:,.0f}")
+detail_summary["リーチ"] = detail_summary["リーチ"].map(lambda x: f"{x:,.0f}")
 
 detail_summary = detail_summary.sort_values("期間No", ascending=False)
 
+detail_cols = [
+    "期間",
+    "インプレッション",
+    "リーチ",
+    "リンククリック（すべて）",
+    "リンククリック",
+]
+
+if show_lp:
+    detail_cols.append("LPビュー")
+
 st.dataframe(
-    detail_summary[
-        [
-            "期間",
-            "インプレッション",
-            "リーチ",
-            "リンククリック（すべて）",
-            "リンククリック",
-            "LPビュー"
-        ]
-    ],
+    detail_summary[detail_cols],
     width="stretch",
     hide_index=True
 )
-
 # =========================
 # 日別推移用データ
 # =========================
@@ -263,14 +339,18 @@ st.plotly_chart(fig1, width="stretch")
 # 行動
 # ==================
 
+action_y = [
+    "クリック(すべて)",
+    "リンククリック"
+]
+
+if show_lp:
+    action_y.append("ランディングページビュー")
+
 fig2 = px.line(
     daily_summary,
     x="レポート開始日",
-    y=[
-        "クリック(すべて)",
-        "リンククリック",
-        "ランディングページビュー"
-    ],
+    y=action_y,
     markers=True,
     title="行動推移"
 )
@@ -279,7 +359,9 @@ fig2.update_traces(line=dict(width=3))
 
 fig2.data[0].line.color = "#808080"
 fig2.data[1].line.color = "#F79646"
-fig2.data[2].line.color = "#00B050"
+
+if show_lp and len(fig2.data) >= 3:
+    fig2.data[2].line.color = "#00B050"
 
 st.plotly_chart(fig2, width="stretch")
 
@@ -305,8 +387,12 @@ awareness_metrics = [
 action_metrics = [
     ("クリック（すべて）", "クリック(すべて)"),
     ("リンククリック", "リンククリック"),
-    ("LPビュー", "ランディングページビュー"),
 ]
+
+if show_lp:
+    action_metrics.append(
+        ("LPビュー", "ランディングページビュー")
+    )
 
 
 # =========================
@@ -360,7 +446,7 @@ show_gender_pies(
 show_gender_pies(
     title="行動指標",
     metrics=action_metrics,
-    col_count=3
+    col_count=len(action_metrics)
 )
 
 
@@ -455,7 +541,7 @@ show_age_gender_bars(
 show_age_gender_bars(
     title="行動指標",
     metrics=action_metrics,
-    col_count=3
+    col_count=len(action_metrics)
 )
 
 st.subheader("表示場所分析")
@@ -490,19 +576,57 @@ place_summary = place_summary.rename(
     }
 )
 
+# =========================
+# リーチ比追加
+# =========================
+
+place_summary["クリック(すべて)"] = place_summary.apply(
+    lambda row: (
+        f'{row["クリック(すべて)"]:,.0f} ({row["クリック(すべて)"] / row["リーチ"] * 100:.2f}%)'
+        if row["リーチ"] > 0 else f'{row["クリック(すべて)"]:,.0f}'
+    ),
+    axis=1
+)
+
+place_summary["リンククリック"] = place_summary.apply(
+    lambda row: (
+        f'{row["リンククリック"]:,.0f} ({row["リンククリック"] / row["リーチ"] * 100:.2f}%)'
+        if row["リーチ"] > 0 else f'{row["リンククリック"]:,.0f}'
+    ),
+    axis=1
+)
+
+place_summary["LPビュー"] = place_summary.apply(
+    lambda row: (
+        f'{row["LPビュー"]:,.0f} ({row["LPビュー"] / row["リーチ"] * 100:.2f}%)'
+        if row["リーチ"] > 0 else f'{row["LPビュー"]:,.0f}'
+    ),
+    axis=1
+)
+
+place_summary["インプレッション"] = place_summary["インプレッション"].map(
+    lambda x: f"{x:,.0f}"
+)
+
+place_summary["リーチ"] = place_summary["リーチ"].map(
+    lambda x: f"{x:,.0f}"
+)
+
+place_cols = [
+    "配置",
+    "配信",
+    "アトリビューション設定",
+    "インプレッション",
+    "リーチ",
+    "クリック(すべて)",
+    "リンククリック",
+]
+
+if show_lp:
+    place_cols.append("LPビュー")
+
 st.dataframe(
-    place_summary[
-        [
-            "配置",
-            "配信",
-            "アトリビューション設定",
-            "インプレッション",
-            "リーチ",
-            "クリック(すべて)",
-            "リンククリック",
-            "LPビュー"
-        ]
-    ],
+    place_summary[place_cols],
     width="stretch",
     hide_index=True
 )
