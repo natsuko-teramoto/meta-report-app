@@ -110,11 +110,11 @@ monthly_place_df.columns = monthly_place_df.columns.str.strip()
 daily_df.columns = daily_df.columns.str.strip()
 
 
-adsets = sorted(monthly_df["キャンペーン名"].dropna().astype(str).unique())
+campaigns = sorted(monthly_df["キャンペーン名"].dropna().astype(str).unique())
 
 selected_campaign = st.sidebar.selectbox(
-    "医院・広告セットを選択",
-    adsets
+    "医院・キャンペーンを選択",
+    campaigns
 )
 
 show_campaign_name = st.sidebar.checkbox(
