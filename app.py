@@ -108,6 +108,9 @@ daily_all_df.columns = daily_all_df.columns.str.strip()
 monthly_df.columns = monthly_df.columns.str.strip()
 monthly_place_df.columns = monthly_place_df.columns.str.strip()
 daily_df.columns = daily_df.columns.str.strip()
+st.write(selected_month)
+st.write(monthly_file.name)
+st.write(monthly_df.columns.tolist())
 
 
 campaigns = sorted(monthly_df["キャンペーン名"].dropna().astype(str).unique())
