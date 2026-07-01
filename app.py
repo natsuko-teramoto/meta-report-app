@@ -737,52 +737,49 @@ def show_age_gender_bars(title, metrics, col_count):
         else:
             age_gender_df["割合"] = 0
 
-        age_gender_pivot = age_gender_df.pivot_table(
-            index="年齢",
-            columns="性別",
-            values="割合",
-            aggfunc="sum",
-            fill_value=0
-        ).reset_index()
+        age_gender_df["性別"] = age_gender_df["性別"].replace(
+            {
+                "male": "男性",
+                "female": "女性",
+                "unknown": "不明",
+            }
+        )
 
-        for gender in ["male", "female"]:
-            if gender not in age_gender_pivot.columns:
-                age_gender_pivot[gender] = 0
-
-        age_gender_pivot["年齢"] = pd.Categorical(
-            age_gender_pivot["年齢"],
+        age_gender_df["年齢"] = pd.Categorical(
+            age_gender_df["年齢"],
             categories=age_order,
             ordered=True
         )
 
-        age_gender_pivot = age_gender_pivot.sort_values("年齢")
+        age_gender_df = age_gender_df.sort_values(["年齢", "性別"])
 
-        age_gender_pivot = age_gender_pivot.rename(
-            columns={
-                "male": "男性",
-                "female": "女性"
-            }
+        age_gender_df["表示"] = age_gender_df.apply(
+            lambda row: f'{row[metric]:,.0f}<br>{row["割合"]:.1f}%',
+            axis=1
         )
 
         with chart_col:
             fig = px.bar(
-                age_gender_pivot,
+                age_gender_df,
                 x="年齢",
-                y=["女性", "男性"],
-                title=f"{display_name} 年齢別比率",
+                y=metric,
+                color="性別",
+                title=f"{display_name} 年齢別",
                 barmode="stack",
-                text_auto=".1f"
+                text="表示",
+                category_orders={
+                    "年齢": age_order,
+                    "性別": ["女性", "男性", "不明"],
+                },
             )
 
             fig.update_layout(
-                yaxis_title="割合",
+                yaxis_title=display_name,
                 xaxis_title="",
                 legend_title_text="性別",
-                yaxis_ticksuffix="%"
             )
 
             fig.update_traces(
-                texttemplate="%{y:.1f}%",
                 textposition="inside"
             )
 
