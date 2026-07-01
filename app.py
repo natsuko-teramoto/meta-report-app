@@ -9,15 +9,71 @@ st.set_page_config(
     layout="wide"
 )
 
+
 st.title("Meta広告レポート")
 
-DAILY_DIR = Path("data/daily")
-PLACE_DIR = Path("data/place")
+MONTHLY_DIR = Path("data/monthly")
+DAILY_AGE_GENDER_DIR = Path("data/daily_age_gender")
+
+
+def get_month_label(file_name):
+    import re
+    match = re.search(r"【(\d{4}年\d{1,2}月)】", file_name)
+    if match:
+        return match.group(1)
+    return None
+
+
+def sort_month_label(month_label):
+    year = int(month_label.split("年")[0])
+    month = int(month_label.split("年")[1].replace("月", ""))
+    return year, month
+
 
 @st.cache_data
-def read_excel_folder(folder):
-    files = list(folder.glob("*.xlsx"))
+def read_excel_file(file_path):
+    df = pd.read_excel(file_path)
+    df["取込ファイル"] = file_path.name
+    return df
 
+
+monthly_files = list(MONTHLY_DIR.glob("*.xlsx"))
+
+month_options = []
+
+for file in monthly_files:
+    month_label = get_month_label(file.name)
+    if month_label:
+        month_options.append(month_label)
+
+month_options = sorted(
+    list(set(month_options)),
+    key=sort_month_label
+)
+
+st.sidebar.header("条件選択")
+
+selected_month = st.sidebar.selectbox(
+    "対象月",
+    month_options,
+    index=len(month_options) - 1
+)
+
+monthly_file = next(
+    file for file in MONTHLY_DIR.glob("*.xlsx")
+    if selected_month in file.name
+)
+
+daily_age_gender_file = next(
+    file for file in DAILY_AGE_GENDER_DIR.glob("*.xlsx")
+    if selected_month in file.name
+)
+
+monthly_df = read_excel_file(monthly_file)
+daily_df = read_excel_file(daily_age_gender_file)
+
+@st.cache_data
+def read_excel_files(files):
     dfs = []
     for file in files:
         df = pd.read_excel(file)
@@ -29,15 +85,20 @@ def read_excel_folder(folder):
 
     return pd.concat(dfs, ignore_index=True)
 
-daily_df = read_excel_folder(DAILY_DIR)
-place_df = read_excel_folder(PLACE_DIR)
 
+monthly_all_df = read_excel_files(monthly_files)
+
+daily_age_gender_files = list(DAILY_AGE_GENDER_DIR.glob("*.xlsx"))
+daily_all_df = read_excel_files(daily_age_gender_files)
+
+monthly_all_df.columns = monthly_all_df.columns.str.strip()
+daily_all_df.columns = daily_all_df.columns.str.strip()
+
+monthly_df.columns = monthly_df.columns.str.strip()
 daily_df.columns = daily_df.columns.str.strip()
-place_df.columns = place_df.columns.str.strip()
 
-st.sidebar.header("条件選択")
 
-adsets = sorted(daily_df["広告セット名"].dropna().astype(str).unique())
+adsets = sorted(monthly_df["広告セット名"].dropna().astype(str).unique())
 
 selected_adset = st.sidebar.selectbox(
     "医院・広告セットを選択",
@@ -89,28 +150,72 @@ show_action = st.sidebar.checkbox(
     value=True
 )
 
-daily_df["レポート開始日"] = pd.to_datetime(daily_df["レポート開始日"])
+monthly_df["レポート開始日"] = pd.to_datetime(
+    monthly_df["レポート開始日"],
+    errors="coerce"
+)
+monthly_df["レポート終了日"] = pd.to_datetime(
+    monthly_df["レポート終了日"],
+    errors="coerce"
+)
+monthly_df = monthly_df.dropna(
+    subset=["レポート開始日", "レポート終了日"]
+)
 
-min_date = daily_df["レポート開始日"].min().date()
-max_date = daily_df["レポート開始日"].max().date()
+monthly_all_df["レポート開始日"] = pd.to_datetime(
+    monthly_all_df["レポート開始日"],
+    errors="coerce"
+)
+monthly_all_df["レポート終了日"] = pd.to_datetime(
+    monthly_all_df["レポート終了日"],
+    errors="coerce"
+)
+monthly_all_df = monthly_all_df.dropna(
+    subset=["レポート開始日", "レポート終了日"]
+)
 
-start_date = st.sidebar.date_input("開始日", min_date)
-end_date = st.sidebar.date_input("終了日", max_date)
+daily_df["レポート開始日"] = pd.to_datetime(
+    daily_df["レポート開始日"],
+    errors="coerce"
+)
+daily_df = daily_df.dropna(
+    subset=["レポート開始日"]
+)
 
-filtered_df = daily_df[
-    (daily_df["広告セット名"] == selected_adset)
-    & (daily_df["レポート開始日"].dt.date >= start_date)
-    & (daily_df["レポート開始日"].dt.date <= end_date)
+daily_all_df["レポート開始日"] = pd.to_datetime(
+    daily_all_df["レポート開始日"],
+    errors="coerce"
+)
+daily_all_df = daily_all_df.dropna(
+    subset=["レポート開始日"]
+)
+
+filtered_df = monthly_df[
+    monthly_df["広告セット名"] == selected_adset
 ].copy()
 
-prev_start_date = start_date - relativedelta(months=1)
-prev_end_date = end_date - relativedelta(months=1)
-
-prev_df = daily_df[
-    (daily_df["広告セット名"] == selected_adset)
-    & (daily_df["レポート開始日"].dt.date >= prev_start_date)
-    & (daily_df["レポート開始日"].dt.date <= prev_end_date)
+daily_filtered_df = daily_df[
+    daily_df["広告セット名"] == selected_adset
 ].copy()
+
+end_date = monthly_df["レポート終了日"].max().date()
+
+cumulative_df = monthly_all_df[
+    (monthly_all_df["広告セット名"] == selected_adset)
+    & (monthly_all_df["レポート終了日"].dt.date <= end_date)
+].copy()
+
+adset_daily_all_df = daily_all_df[
+    daily_all_df["広告セット名"] == selected_adset
+].copy()
+
+start_from_first = adset_daily_all_df["レポート開始日"].min().date()
+
+days_from_start = (end_date - start_from_first).days + 1
+
+start_date = cumulative_df["レポート開始日"].min().date()
+
+prev_df = pd.DataFrame()
 
 def total(df, col):
     if col not in df.columns:
@@ -123,9 +228,11 @@ def diff_rate(current, prev):
     return ((current - prev) / prev) * 100
 
 # 掲載開始日・累計掲載日数
-start_from_first = daily_df[
-    daily_df["広告セット名"] == selected_adset
-]["レポート開始日"].min().date()
+adset_daily_all_df = daily_all_df[
+    daily_all_df["広告セット名"] == selected_adset
+].copy()
+
+start_from_first = adset_daily_all_df["レポート開始日"].min().date()
 
 days_from_start = (end_date - start_from_first).days + 1
 # =========================
@@ -145,6 +252,7 @@ if show_start_date:
 if show_elapsed_days:
     condition_items.append(("累計掲載日数", f"{days_from_start} 日"))
 
+
 if condition_items:
     cond_cols = st.columns(len(condition_items))
 
@@ -156,7 +264,9 @@ if condition_items:
 # 当月実績（対象期間）
 # =========================
 
-st.subheader(f"数値実績（{start_date} 〜 {end_date}）")
+st.subheader(
+    f"数値実績（{selected_month}）"
+)
 
 metrics = [
     ("インプレッション", "インプレッション"),
@@ -220,19 +330,10 @@ for col_box, (label, col_name) in zip(cols, metrics):
             reach_rate = current_val / reach_total * 100
 
 
-
-st.caption(f"比較対象期間：{prev_start_date} 〜 {prev_end_date}")
-
-
 # =========================
 # 掲載開始からの累計
 # =========================
 
-cumulative_df = daily_df[
-    (daily_df["広告セット名"] == selected_adset)
-    & (daily_df["レポート開始日"].dt.date >= start_from_first)
-    & (daily_df["レポート開始日"].dt.date <= end_date)
-].copy()
 
 st.subheader("掲載開始からの累計")
 
@@ -347,28 +448,18 @@ if show_cumulative_action:
     st.plotly_chart(fig_cum_action, width="stretch")
 
 # =========================
-# 掲載開始からの詳細（30日刻み）
+# 掲載開始からの詳細（月次）
 # =========================
 
-detail_df = daily_df[
-    (daily_df["広告セット名"] == selected_adset)
-    & (daily_df["レポート開始日"].dt.date >= start_from_first)
-    & (daily_df["レポート開始日"].dt.date <= end_date)
-].copy()
+detail_df = cumulative_df.copy()
 
-detail_df["経過日数"] = (
-    detail_df["レポート開始日"].dt.date - start_from_first
-).apply(lambda x: x.days + 1)
-
-detail_df["期間No"] = ((detail_df["経過日数"] - 1) // 30) + 1
-
-detail_df["期間開始日"] = detail_df["期間No"].apply(
-    lambda x: start_from_first + pd.Timedelta(days=(x - 1) * 30)
+detail_df["期間No"] = (
+    detail_df["レポート開始日"].dt.year * 100
+    + detail_df["レポート開始日"].dt.month
 )
 
-detail_df["期間終了日"] = detail_df["期間No"].apply(
-    lambda x: min(start_from_first + pd.Timedelta(days=x * 30 - 1), end_date)
-)
+detail_df["期間開始日"] = detail_df["レポート開始日"].dt.date
+detail_df["期間終了日"] = detail_df["レポート終了日"].dt.date
 
 detail_df["期間"] = (
     detail_df["期間開始日"].astype(str)
@@ -451,7 +542,7 @@ if show_detail_table:
 # 日別推移用データ
 # =========================
 
-daily_summary = filtered_df.groupby(
+daily_summary = daily_filtered_df.groupby(
     "レポート開始日",
     as_index=False
 ).agg({
@@ -461,6 +552,7 @@ daily_summary = filtered_df.groupby(
     "リンククリック": "sum",
     "ランディングページビュー": "sum"
 })
+
 if show_awareness:
     # ==================
     # 認知
@@ -552,13 +644,13 @@ def show_gender_pies(title, metrics, col_count):
     cols = st.columns(col_count)
 
     for chart_col, (display_name, metric) in zip(cols, metrics):
-        if metric not in filtered_df.columns:
+        if metric not in daily_filtered_df.columns:
             with chart_col:
                 st.warning(f"{metric} 列がありません")
             continue
 
         gender_df = (
-            filtered_df
+            daily_filtered_df
             .groupby("性別", as_index=False)[metric]
             .sum()
         )
@@ -607,13 +699,13 @@ def show_age_gender_bars(title, metrics, col_count):
     cols = st.columns(col_count)
 
     for chart_col, (display_name, metric) in zip(cols, metrics):
-        if metric not in filtered_df.columns:
+        if metric not in daily_filtered_df.columns:
             with chart_col:
                 st.warning(f"{metric} 列がありません")
             continue
 
         age_gender_df = (
-            filtered_df
+            daily_filtered_df
             .groupby(["年齢", "性別"], as_index=False)[metric]
             .sum()
         )
@@ -692,18 +784,15 @@ show_age_gender_bars(
 )
 
 st.subheader("表示場所分析")
-place_df["レポート開始日"] = pd.to_datetime(place_df["レポート開始日"])
 
-place_filtered = place_df[
-    (place_df["キャンペーン名"] == selected_adset)
-    & (place_df["レポート開始日"].dt.date >= start_date)
-    & (place_df["レポート開始日"].dt.date <= end_date)
+place_filtered = monthly_df[
+    monthly_df["広告セット名"] == selected_adset
 ].copy()
 
 place_summary = (
     place_filtered
     .groupby(
-        ["配置", "キャンペーンの配信", "アトリビューション設定"],
+        ["配置", "広告セットの配信", "アトリビューション設定"],
         as_index=False
     )
     .agg({
@@ -717,12 +806,11 @@ place_summary = (
 
 place_summary = place_summary.rename(
     columns={
-        "キャンペーンの配信": "配信",
+        "広告セットの配信": "配信",
         "ランディングページビュー": "LPビュー",
         "クリック(すべて)": "クリック(すべて)"
     }
 )
-
 # =========================
 # リーチ比追加
 # =========================
