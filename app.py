@@ -111,9 +111,6 @@ daily_all_df.columns = daily_all_df.columns.str.strip()
 monthly_df.columns = monthly_df.columns.str.strip()
 monthly_place_df.columns = monthly_place_df.columns.str.strip()
 daily_df.columns = daily_df.columns.str.strip()
-st.write(selected_month)
-st.write(monthly_file.name)
-st.write(monthly_df.columns.tolist())
 
 
 campaigns = sorted(monthly_df["キャンペーン名"].dropna().astype(str).unique())
@@ -642,6 +639,10 @@ gender_label_map = {
     "unknown": "不明",
 }
 
+gender_color_map = {
+    "女性": "#FFC000"
+}
+
 age_order = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
 
 awareness_metrics = [
@@ -689,7 +690,9 @@ def show_gender_pies(title, metrics, col_count):
                 names="性別",
                 values=metric,
                 title=f"{display_name} 男女比",
-                hole=0
+                hole=0,
+                color="性別",
+                color_discrete_map=gender_color_map
             )
 
             fig.update_traces(
@@ -777,6 +780,7 @@ def show_age_gender_bars(title, metrics, col_count):
                     "年齢": age_order,
                     "性別": ["女性", "男性", "不明"],
                 },
+                color_discrete_map=gender_color_map,
             )
 
             fig.update_layout(
