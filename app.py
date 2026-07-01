@@ -53,6 +53,9 @@ month_options = sorted(
 )
 
 st.sidebar.header("条件選択")
+if st.sidebar.button("キャッシュクリア"):
+    st.cache_data.clear()
+    st.rerun()
 
 selected_month = st.sidebar.selectbox(
     "対象月",
