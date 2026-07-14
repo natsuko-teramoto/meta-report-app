@@ -3,19 +3,45 @@ import pandas as pd
 import plotly.express as px
 from pathlib import Path
 from dateutil.relativedelta import relativedelta
+from report.report_builder import (
+    build_report,
+    build_summary_metrics,
+    build_detail_columns,
+    build_place_columns,
+    build_awareness_chart_columns,
+    build_action_chart_columns,
+    build_cumulative_awareness_chart_columns,
+    build_cumulative_action_chart_columns,
+    build_analysis_metrics,
+)
+from ppt.create_ppt import create_meta_report_ppt
+from utils.chart_export import generate_ppt_images
+from charts.age_chart import (
+    create_age_chart,
+    build_age_gender_table_df,
+)
+from charts.gender_chart import create_gender_chart
+from charts.chart_theme import (
+    GENDER_LABEL_MAP,
+    GENDER_COLOR_MAP,
+    AGE_ORDER,
+)
+from charts.line_chart import (
+    create_awareness_chart,
+    create_action_chart,
+)
+from charts.placement_chart import create_placement_summary
 
 st.set_page_config(
     page_title="Meta広告レポート",
     layout="wide"
 )
 
-
 st.title("Meta広告レポート")
 
 MONTHLY_DIR = Path("data/monthly")
 MONTHLY_PLACE_DIR = Path("data/monthly_place")
 DAILY_AGE_GENDER_DIR = Path("data/daily_age_gender")
-
 
 def get_month_label(file_name):
     import re
@@ -24,19 +50,16 @@ def get_month_label(file_name):
         return match.group(1)
     return None
 
-
 def sort_month_label(month_label):
     year = int(month_label.split("年")[0])
     month = int(month_label.split("年")[1].replace("月", ""))
     return year, month
-
 
 @st.cache_data
 def read_excel_file(file_path):
     df = pd.read_excel(file_path)
     df["取込ファイル"] = file_path.name
     return df
-
 
 monthly_files = list(MONTHLY_DIR.glob("*.xlsx"))
 
@@ -95,7 +118,6 @@ def read_excel_files(files):
 
     return pd.concat(dfs, ignore_index=True)
 
-
 monthly_all_df = read_excel_files(monthly_files)
 
 monthly_place_files = list(MONTHLY_PLACE_DIR.glob("*.xlsx"))
@@ -112,7 +134,6 @@ monthly_df.columns = monthly_df.columns.str.strip()
 monthly_place_df.columns = monthly_place_df.columns.str.strip()
 daily_df.columns = daily_df.columns.str.strip()
 
-
 campaigns = sorted(monthly_df["キャンペーン名"].dropna().astype(str).unique())
 
 selected_campaign = st.sidebar.selectbox(
@@ -120,6 +141,10 @@ selected_campaign = st.sidebar.selectbox(
     campaigns
 )
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("## 表示設定")
+
+st.sidebar.markdown("### 広告概要")
 show_campaign_name = st.sidebar.checkbox(
     "キャンペーン名を表示",
     value=True
@@ -135,35 +160,139 @@ show_elapsed_days = st.sidebar.checkbox(
     value=True
 )
 
-show_lp = st.sidebar.checkbox(
-    "LPビューを表示",
+st.sidebar.markdown("### 配信結果数値")
+show_summary_impression = st.sidebar.checkbox(
+    "インプレッション",
     value=True
 )
 
+show_summary_reach = st.sidebar.checkbox(
+    "リーチ",
+    value=True
+)
+
+show_summary_click = st.sidebar.checkbox(
+    "クリック(すべて)",
+    value=True
+)
+
+show_summary_link_click = st.sidebar.checkbox(
+    "リンククリック",
+    value=True
+)
+
+show_summary_lp = st.sidebar.checkbox(
+    "LPビュー",
+    value=True
+)
+
+selected_summary_metrics = []
+
+if show_summary_impression:
+    selected_summary_metrics.append("インプレッション")
+
+if show_summary_reach:
+    selected_summary_metrics.append("リーチ")
+
+if show_summary_click:
+    selected_summary_metrics.append("クリック(すべて)")
+
+if show_summary_link_click:
+    selected_summary_metrics.append("リンククリック")
+
+if show_summary_lp:
+    selected_summary_metrics.append("ランディングページビュー")
+
+st.sidebar.markdown("### 年齢・性別分析グラフ")
+show_analysis_impression = st.sidebar.checkbox(
+    "インプレッション",
+    value=True,
+    key="analysis_impression"
+)
+
+show_analysis_reach = st.sidebar.checkbox(
+    "リーチ",
+    value=True,
+    key="analysis_reach"
+)
+
+show_analysis_click = st.sidebar.checkbox(
+    "クリック(すべて)",
+    value=True,
+    key="analysis_click"
+)
+
+show_analysis_link_click = st.sidebar.checkbox(
+    "リンククリック",
+    value=True,
+    key="analysis_link_click"
+)
+
+show_analysis_lp = st.sidebar.checkbox(
+    "LPビュー",
+    value=True,
+    key="analysis_lp"
+)
+
+analysis_metrics = build_analysis_metrics(
+    show_analysis_impression,
+    show_analysis_reach,
+    show_analysis_click,
+    show_analysis_link_click,
+    show_analysis_lp,
+)
+
+st.sidebar.markdown("### デイリー推移グラフ")
+show_awareness = st.sidebar.checkbox(
+    "認知推移グラフを表示",
+    value=True
+)
+
+show_action = st.sidebar.checkbox(
+    "行動推移グラフを表示",
+    value=True
+)
+
+st.sidebar.markdown("### 表示場所")
+show_place_table = st.sidebar.checkbox(
+    "表示場所分析を表示",
+    value=True
+)
+
+st.sidebar.markdown("### 掲載開始からの詳細")
 show_detail_table = st.sidebar.checkbox(
     "掲載開始からの詳細を表示",
     value=True
 )
 
+st.sidebar.markdown("### 累計推移グラフ")
 show_cumulative_awareness = st.sidebar.checkbox(
-    "累計認知推移を表示",
+    "累計認知推移グラフを表示",
     value=True
 )
 
 show_cumulative_action = st.sidebar.checkbox(
-    "累計行動推移を表示",
+    "累計行動推移グラフを表示",
     value=True
 )
 
-show_awareness = st.sidebar.checkbox(
-    "認知推移を表示",
-    value=True
-)
+report_settings = {
+    "ad_info": {},
+    "metrics": {},
+    "details": {},
+    "graphs": {},
+    "analysis": {},
+}
 
-show_action = st.sidebar.checkbox(
-    "行動推移を表示",
-    value=True
-)
+st.sidebar.markdown("---")
+
+analysis_metric_options = {
+    "インプレッション": "インプレッション",
+    "リーチ": "リーチ",
+    "クリック(すべて)": "クリックすべて",
+    "リンククリック": "リンククリック",
+    "ランディングページビュー":"LPビュー",
+}
 
 monthly_df["レポート開始日"] = pd.to_datetime(
     monthly_df["レポート開始日"],
@@ -230,7 +359,15 @@ days_from_start = (end_date - start_from_first).days + 1
 
 start_date = cumulative_df["レポート開始日"].min().date()
 
-prev_df = pd.DataFrame()
+current_month_start = monthly_df["レポート開始日"].min()
+prev_month_start = current_month_start - relativedelta(months=1)
+prev_month_end = current_month_start - relativedelta(days=1)
+
+prev_df = monthly_all_df[
+    (monthly_all_df["キャンペーン名"] == selected_campaign)
+    & (monthly_all_df["レポート開始日"].dt.date >= prev_month_start.date())
+    & (monthly_all_df["レポート終了日"].dt.date <= prev_month_end.date())
+].copy()
 
 def total(df, col):
     if col not in df.columns:
@@ -250,6 +387,7 @@ adset_daily_all_df = daily_all_df[
 start_from_first = adset_daily_all_df["レポート開始日"].min().date()
 
 days_from_start = (end_date - start_from_first).days + 1
+
 # =========================
 # 抽出条件
 # =========================
@@ -267,7 +405,6 @@ if show_start_date:
 if show_elapsed_days:
     condition_items.append(("累計掲載日数", f"{days_from_start} 日"))
 
-
 if condition_items:
     cond_cols = st.columns(len(condition_items))
 
@@ -280,191 +417,250 @@ if condition_items:
 # =========================
 
 st.subheader(
-    f"数値実績（{selected_month}）"
+    f"配信結果（{selected_month}）"
 )
 
-metrics = [
-    ("インプレッション", "インプレッション"),
-    ("リーチ", "リーチ"),
-    ("リンククリック（すべて）", "クリック(すべて)"),
-    ("リンククリック", "リンククリック"),
-]
+metrics = build_summary_metrics(
+    filtered_df,
+    prev_df,
+    selected_summary_metrics,
+)
 
-if show_lp:
-    metrics.append(
-        ("LPビュー", "ランディングページビュー")
-    )
+if metrics:
+    cols = st.columns(len(metrics))
 
-cols = st.columns(len(metrics))
+    for col_box, item in zip(cols, metrics):
 
-reach_total = total(filtered_df, "リーチ")
+        display_value = f'{item["value"]:,.0f}'
 
-for col_box, (label, col_name) in zip(cols, metrics):
-    current_val = total(filtered_df, col_name)
-    prev_val = total(prev_df, col_name)
-    rate = diff_rate(current_val, prev_val)
-
-    delta_text = "-" if rate is None else f"前月比 {rate:.1f}%"
-
-    display_value = f"{current_val:,.0f}"
-
-    if col_name == "インプレッション":
-        if reach_total > 0:
-            frequency = current_val / reach_total
-
+        if item["frequency"] is not None:
             display_value = (
-                f"{current_val:,.0f}"
-                f" ({frequency:.2f})"
+                f'{item["value"]:,.0f} '
+                f'({item["frequency"]:.2f})'
             )
 
-    if col_name in [
-        "クリック(すべて)",
-        "リンククリック",
-        "ランディングページビュー"
-    ]:
-        if reach_total > 0:
-            reach_rate = current_val / reach_total * 100
+        elif item["reach_rate"] is not None:
             display_value = (
-                f"{current_val:,.0f}"
-                f" ({reach_rate:.2f}%)"
+                f'{item["value"]:,.0f} '
+                f'({item["reach_rate"]:.2f}%)'
             )
 
-    col_box.metric(
-        label=label,
-        value=display_value,
-        delta=delta_text
-    )
-    reach_rate = None
+        delta = None
 
-    if col_name in [
-        "クリック(すべて)",
-        "リンククリック",
-        "ランディングページビュー"
-    ]:
-        if reach_total > 0:
-            reach_rate = current_val / reach_total * 100
+        if item["change"] is not None:
+            if item["change"] > 0:
+                delta = f"前月比 ▲{item['change']:.1f}%"
+            elif item["change"] < 0:
+                delta = f"前月比 ▼{abs(item['change']):.1f}%"
+            else:
+                delta = "前月比 ±0.0%"
 
+        col_box.metric(
+            label=item["label"],
+            value=display_value,
+            delta=delta,
+        )
+
+else:
+    st.info("配信結果の表示項目が選択されていません。")
 
 # =========================
 # 掲載開始からの累計
 # =========================
 
+st.subheader("掲載開始からの累計配信結果")
 
-st.subheader("掲載開始からの累計")
-
-cum_cols = st.columns(5)
-
-cum_reach_total = total(cumulative_df, "リーチ")
-
-cum_cols = st.columns(len(metrics))
-
-for col_box, (label, col_name) in zip(cum_cols, metrics):
-
-    cum_val = total(cumulative_df, col_name)
-
-    display_value = f"{cum_val:,.0f}"
-
-    if col_name == "インプレッション":
-        if cum_reach_total > 0:
-            frequency = cum_val / cum_reach_total
-            display_value = f"{cum_val:,.0f} ({frequency:.2f})"
-
-    elif col_name in [
-        "クリック(すべて)",
-        "リンククリック",
-        "ランディングページビュー"
-    ]:
-        if cum_reach_total > 0:
-            reach_rate = cum_val / cum_reach_total * 100
-            display_value = f"{cum_val:,.0f} ({reach_rate:.2f}%)"
-
-    col_box.metric(
-        label=label,
-        value=display_value
-    )
-# =========================
-# 掲載開始からの累計推移
-# =========================
-
-
-
-cumulative_trend = daily_df[
-    (daily_df["キャンペーン名"] == selected_campaign)
-    & (daily_df["レポート開始日"].dt.date >= start_from_first)
-    & (daily_df["レポート開始日"].dt.date <= end_date)
-].copy()
-
-cumulative_trend = (
-    cumulative_trend
-    .groupby("レポート開始日", as_index=False)
-    .agg({
-        "インプレッション": "sum",
-        "リーチ": "sum",
-        "クリック(すべて)": "sum",
-        "リンククリック": "sum",
-        "ランディングページビュー": "sum"
-    })
+cumulative_metrics = build_summary_metrics(
+    cumulative_df,
+    None,
+    selected_summary_metrics,
 )
 
-cumulative_trend = cumulative_trend.sort_values("レポート開始日")
+if cumulative_metrics:
+    cum_cols = st.columns(len(cumulative_metrics))
 
-cumulative_trend["累計インプレッション"] = cumulative_trend["インプレッション"].cumsum()
-cumulative_trend["累計リーチ"] = cumulative_trend["リーチ"].cumsum()
-cumulative_trend["累計クリック(すべて)"] = cumulative_trend["クリック(すべて)"].cumsum()
-cumulative_trend["累計リンククリック"] = cumulative_trend["リンククリック"].cumsum()
-cumulative_trend["累計LPビュー"] = cumulative_trend["ランディングページビュー"].cumsum()
+    for col_box, item in zip(cum_cols, cumulative_metrics):
 
-if cumulative_trend.empty:
-    st.info("このキャンペーンはデイリー推移データがないため、累計推移グラフは表示できません。")
+        display_value = f'{item["value"]:,.0f}'
+
+        if item["frequency"] is not None:
+            display_value = (
+                f'{item["value"]:,.0f} '
+                f'({item["frequency"]:.2f})'
+            )
+
+        elif item["reach_rate"] is not None:
+            display_value = (
+                f'{item["value"]:,.0f} '
+                f'({item["reach_rate"]:.2f}%)'
+            )
+
+        col_box.metric(
+            label=item["label"],
+            value=display_value,
+        )
+
+else:
+    st.info("累計配信結果の表示項目が選択されていません。")
+
+st.divider()
+st.subheader("男女・年齢分析")
+
+# PowerPointへ貼るグラフの登録場所
+# ブラウザ表示用に作ったFigureを再利用する
+ppt_chart_figures = {}
+
+# =========================
+# 共通設定
+# =========================
+awareness_metrics = [
+    ("インプレッション", "インプレッション"),
+    ("リーチ", "リーチ"),
+]
+
+action_metrics = [
+    ("クリック（すべて）", "クリック(すべて)"),
+    ("リンククリック", "リンククリック"),
+    ("LPビュー","ランディングページビュー"),
+]
+
+def show_metric_analysis(title, metrics):
+    st.markdown(f"### {title}")
+
+    for display_name, metric in metrics:
+
+        if metric not in analysis_metrics:
+                    continue
+
+        if metric not in daily_filtered_df.columns:
+            st.warning(f"{metric} 列がありません")
+            continue
+
+        st.markdown(f"**{display_name}**")
+
+        col_age, col_gender = st.columns([7, 3])
+
+        age_fig = create_age_chart(
+            daily_filtered_df,
+            metric,
+            display_name,
+            AGE_ORDER,
+            GENDER_COLOR_MAP,
+        )
+
+        with col_age:
+            st.plotly_chart(age_fig, width="stretch")
+
+        gender_fig = create_gender_chart(
+            daily_filtered_df,
+            metric,
+            GENDER_LABEL_MAP,
+            GENDER_COLOR_MAP,
+        )
+
+        with col_gender:
+            st.plotly_chart(gender_fig, width="stretch")
+
+        ppt_chart_figures[f"age_{metric}"] = {
+            "fig": age_fig,
+            "width": 800,
+            "height": 450,
+            "scale": 3,
+        }
+
+        ppt_chart_figures[f"gender_{metric}"] = {
+            "fig": gender_fig,
+            "width": 650,
+            "height": 450,
+            "scale": 3,
+        }
+
+show_metric_analysis(
+    "認知指標",
+    awareness_metrics,
+)
+
+show_metric_analysis(
+    "行動指標",
+    action_metrics,
+)
+
+# =========================
+# 日別推移用データ
+# =========================
+
+daily_summary = daily_filtered_df.groupby(
+    "レポート開始日",
+    as_index=False
+).agg({
+    "インプレッション": "sum",
+    "リーチ": "sum",
+    "クリック(すべて)": "sum",
+    "リンククリック": "sum",
+    "ランディングページビュー": "sum"
+})
+
+awareness_chart_columns = build_awareness_chart_columns(
+    selected_summary_metrics
+)
+
+action_chart_columns = build_action_chart_columns(
+    selected_summary_metrics
+)
+
+if daily_summary.empty:
+    st.info("このキャンペーンは対象月のデイリー推移データがありません。")
 else:
 
-    if show_cumulative_awareness:
-        # 認知累計
-        fig_cum_awareness = px.line(
-            cumulative_trend,
-            x="レポート開始日",
-            y=[
-                "累計インプレッション",
-                "累計リーチ"
-            ],
-            markers=True,
-            title="累計推移：インプレッション・リーチ"
+    if show_awareness:
+        fig1 = create_awareness_chart(
+            daily_summary,
+            awareness_chart_columns,
         )
 
-        fig_cum_awareness.update_traces(line=dict(width=3))
+        if fig1 is not None:
+            ppt_chart_figures["awareness"] = {
+                "fig": fig1,
+                "width": 1200,
+                "height": 700,
+                "scale": 2,
+            }
 
-        fig_cum_awareness.data[0].line.color = "#4F81BD"
-        fig_cum_awareness.data[1].line.color = "#1F497D"
+            st.plotly_chart(fig1, width="stretch")
 
-        st.plotly_chart(fig_cum_awareness, width="stretch")
-
-    if show_cumulative_action:
-        # 行動累計
-        cum_action_y = [
-            "累計クリック(すべて)",
-            "累計リンククリック",
-        ]
-
-        if show_lp:
-            cum_action_y.append("累計LPビュー")
-
-        fig_cum_action = px.line(
-            cumulative_trend,
-            x="レポート開始日",
-            y=cum_action_y,
-            markers=True,
-            title="累計推移：クリック・LPビュー"
+    if show_action:
+        fig2 = create_action_chart(
+            daily_summary,
+            action_chart_columns,
         )
 
-        fig_cum_action.update_traces(line=dict(width=3))
+        if fig2 is not None:
+            ppt_chart_figures["action"] = {
+                "fig": fig2,
+                "width": 1200,
+                "height": 700,
+                "scale": 2,
+            }
 
-        fig_cum_action.data[0].line.color = "#808080"
-        fig_cum_action.data[1].line.color = "#F79646"
+            st.plotly_chart(fig2, width="stretch")
 
-        if show_lp and len(fig_cum_action.data) >= 3:
-            fig_cum_action.data[2].line.color = "#00B050"
+place_summary = create_placement_summary(
+    monthly_place_df,
+    selected_campaign,
+)
 
-        st.plotly_chart(fig_cum_action, width="stretch")
+place_cols = build_place_columns(
+    selected_summary_metrics
+)
+
+if show_place_table:
+    st.subheader("表示場所分析")
+
+    st.dataframe(
+        place_summary[place_cols],
+        width="stretch",
+        hide_index=True
+    )
 
 # =========================
 # 掲載開始からの詳細（月次）
@@ -538,16 +734,9 @@ detail_summary["リーチ"] = detail_summary["リーチ"].map(lambda x: f"{x:,.0
 
 detail_summary = detail_summary.sort_values("期間No", ascending=False)
 
-detail_cols = [
-    "期間",
-    "インプレッション",
-    "リーチ",
-    "リンククリック（すべて）",
-    "リンククリック",
-]
-
-if show_lp:
-    detail_cols.append("LPビュー")
+detail_cols = build_detail_columns(
+    selected_summary_metrics
+)
 
 if show_detail_table:
     st.subheader("掲載開始からの詳細")
@@ -557,271 +746,20 @@ if show_detail_table:
         width="stretch",
         hide_index=True
     )
-# =========================
-# 日別推移用データ
-# =========================
-
-daily_summary = daily_filtered_df.groupby(
-    "レポート開始日",
-    as_index=False
-).agg({
-    "インプレッション": "sum",
-    "リーチ": "sum",
-    "クリック(すべて)": "sum",
-    "リンククリック": "sum",
-    "ランディングページビュー": "sum"
-})
-
-if daily_summary.empty:
-    st.info("このキャンペーンは対象月のデイリー推移データがありません。")
-else:
-
-    if show_awareness:
-        # ==================
-        # 認知
-        # ==================
-
-        fig1 = px.line(
-            daily_summary,
-            x="レポート開始日",
-            y=["インプレッション", "リーチ"],
-            markers=True,
-            title="認知推移"
-        )
-
-        fig1.update_traces(line=dict(width=3))
-
-        fig1.data[0].line.color = "#4F81BD"
-        fig1.data[1].line.color = "#1F497D"
-
-        st.plotly_chart(fig1, width="stretch")
-
-    if show_action:
-        # ==================
-        # 行動
-        # ==================
-
-        action_y = [
-            "クリック(すべて)",
-            "リンククリック"
-        ]
-
-        if show_lp:
-            action_y.append("ランディングページビュー")
-
-        fig2 = px.line(
-            daily_summary,
-            x="レポート開始日",
-            y=action_y,
-            markers=True,
-            title="行動推移"
-        )
-
-        fig2.update_traces(line=dict(width=3))
-
-        fig2.data[0].line.color = "#808080"
-        fig2.data[1].line.color = "#F79646"
-
-        if show_lp and len(fig2.data) >= 3:
-            fig2.data[2].line.color = "#00B050"
-
-        st.plotly_chart(fig2, width="stretch")
-
-st.subheader("男女・年齢分析")
 
 # =========================
-# 共通設定
+# 掲載開始からの累計推移
 # =========================
 
-gender_label_map = {
-    "male": "男性",
-    "female": "女性",
-    "unknown": "不明",
-}
-
-gender_color_map = {
-    "女性": "#FFC000"
-}
-
-age_order = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
-
-awareness_metrics = [
-    ("インプレッション", "インプレッション"),
-    ("リーチ", "リーチ"),
-]
-
-action_metrics = [
-    ("クリック（すべて）", "クリック(すべて)"),
-    ("リンククリック", "リンククリック"),
-]
-
-if show_lp:
-    action_metrics.append(
-        ("LPビュー", "ランディングページビュー")
-    )
-
-
-# =========================
-# 男女別分析：円グラフ
-# =========================
-
-def show_gender_pies(title, metrics, col_count):
-    st.markdown(f"#### {title}")
-
-    cols = st.columns(col_count)
-
-    for chart_col, (display_name, metric) in zip(cols, metrics):
-        if metric not in daily_filtered_df.columns:
-            with chart_col:
-                st.warning(f"{metric} 列がありません")
-            continue
-
-        gender_df = (
-            daily_filtered_df
-            .groupby("性別", as_index=False)[metric]
-            .sum()
-        )
-
-        gender_df["性別"] = gender_df["性別"].replace(gender_label_map)
-
-        with chart_col:
-            fig = px.pie(
-                gender_df,
-                names="性別",
-                values=metric,
-                title=f"{display_name} 男女比",
-                hole=0,
-                color="性別",
-                color_discrete_map=gender_color_map
-            )
-
-            fig.update_traces(
-                textposition="inside",
-                textinfo="percent+label"
-            )
-
-            st.plotly_chart(fig, width="stretch")
-
-
-st.subheader("男女別分析")
-
-show_gender_pies(
-    title="認知指標",
-    metrics=awareness_metrics,
-    col_count=2
-)
-
-show_gender_pies(
-    title="行動指標",
-    metrics=action_metrics,
-    col_count=len(action_metrics)
-)
-
-
-# =========================
-# 年齢別分析：積み上げ棒グラフ
-# =========================
-
-def show_age_gender_bars(title, metrics, col_count):
-    st.markdown(f"#### {title}")
-
-    cols = st.columns(col_count)
-
-    for chart_col, (display_name, metric) in zip(cols, metrics):
-        if metric not in daily_filtered_df.columns:
-            with chart_col:
-                st.warning(f"{metric} 列がありません")
-            continue
-
-        age_gender_df = (
-            daily_filtered_df
-            .groupby(["年齢", "性別"], as_index=False)[metric]
-            .sum()
-        )
-
-        total_value = age_gender_df[metric].sum()
-
-        if total_value > 0:
-            age_gender_df["割合"] = age_gender_df[metric] / total_value * 100
-        else:
-            age_gender_df["割合"] = 0
-
-        age_gender_df["性別"] = age_gender_df["性別"].replace(
-            {
-                "male": "男性",
-                "female": "女性",
-                "unknown": "不明",
-            }
-        )
-
-        age_gender_df["年齢"] = pd.Categorical(
-            age_gender_df["年齢"],
-            categories=age_order,
-            ordered=True
-        )
-
-        age_gender_df = age_gender_df.sort_values(["年齢", "性別"])
-
-        age_gender_df["表示"] = age_gender_df.apply(
-            lambda row: f'{row[metric]:,.0f}<br>{row["割合"]:.1f}%',
-            axis=1
-        )
-
-        with chart_col:
-            fig = px.bar(
-                age_gender_df,
-                x="年齢",
-                y=metric,
-                color="性別",
-                title=f"{display_name} 年齢別",
-                barmode="stack",
-                text="表示",
-                category_orders={
-                    "年齢": age_order,
-                    "性別": ["女性", "男性", "不明"],
-                },
-                color_discrete_map=gender_color_map,
-            )
-
-            fig.update_layout(
-                yaxis_title=display_name,
-                xaxis_title="",
-                legend_title_text="性別",
-            )
-
-            fig.update_traces(
-                textposition="inside"
-            )
-
-            st.plotly_chart(fig, width="stretch")
-
-
-st.subheader("年齢別分析")
-
-show_age_gender_bars(
-    title="認知指標",
-    metrics=awareness_metrics,
-    col_count=2
-)
-
-show_age_gender_bars(
-    title="行動指標",
-    metrics=action_metrics,
-    col_count=len(action_metrics)
-)
-
-st.subheader("表示場所分析")
-
-place_filtered = monthly_place_df[
-    monthly_place_df["キャンペーン名"] == selected_campaign
+cumulative_trend = daily_df[
+    (daily_df["キャンペーン名"] == selected_campaign)
+    & (daily_df["レポート開始日"].dt.date >= start_from_first)
+    & (daily_df["レポート開始日"].dt.date <= end_date)
 ].copy()
 
-place_summary = (
-    place_filtered
-    .groupby(
-        ["配置", "キャンペーンの配信", "アトリビューション設定"],
-        as_index=False
-    )
+cumulative_trend = (
+    cumulative_trend
+    .groupby("レポート開始日", as_index=False)
     .agg({
         "インプレッション": "sum",
         "リーチ": "sum",
@@ -831,70 +769,151 @@ place_summary = (
     })
 )
 
-place_summary = place_summary.rename(
-    columns={
-        "キャンペーンの配信": "配信",
-        "ランディングページビュー": "LPビュー",
-        "クリック(すべて)": "クリック(すべて)"
-    }
+cumulative_trend = cumulative_trend.sort_values("レポート開始日")
+
+cumulative_trend["累計インプレッション"] = cumulative_trend["インプレッション"].cumsum()
+cumulative_trend["累計リーチ"] = cumulative_trend["リーチ"].cumsum()
+cumulative_trend["累計クリック(すべて)"] = cumulative_trend["クリック(すべて)"].cumsum()
+cumulative_trend["累計リンククリック"] = cumulative_trend["リンククリック"].cumsum()
+cumulative_trend["累計LPビュー"] = cumulative_trend["ランディングページビュー"].cumsum()
+
+if cumulative_trend.empty:
+    st.info("このキャンペーンはデイリー推移データがないため、累計推移グラフは表示できません。")
+else:
+
+    if show_cumulative_awareness:
+        # 認知累計
+        cum_awareness_y = build_cumulative_awareness_chart_columns(
+            selected_summary_metrics
+        )
+
+        if cum_awareness_y:
+            fig_cum_awareness = px.line(
+                cumulative_trend,
+                x="レポート開始日",
+                y=cum_awareness_y,
+                markers=True,
+                title="累計推移：インプレッション・リーチ"
+            )
+
+            fig_cum_awareness.update_traces(line=dict(width=3))
+
+            color_map = {
+                "累計インプレッション": "#4F81BD",
+                "累計リーチ": "#1F497D",
+            }
+
+            for trace in fig_cum_awareness.data:
+                if trace.name in color_map:
+                    trace.line.color = color_map[trace.name]
+
+            st.plotly_chart(fig_cum_awareness, width="stretch")
+
+    if show_cumulative_action:
+        # 行動累計
+        cum_action_y = build_cumulative_action_chart_columns(
+            selected_summary_metrics
+        )
+
+        if not cum_action_y:
+            fig_cum_action = None
+        else:
+            
+            fig_cum_action = px.line(
+                cumulative_trend,
+                x="レポート開始日",
+                y=cum_action_y,
+                markers=True,
+                title="累計推移：クリック・LPビュー"
+            )
+
+            fig_cum_action.update_traces(line=dict(width=3))
+
+            color_map = {
+                "累計クリック(すべて)": "#808080",
+                "累計リンククリック": "#F79646",
+                "累計LPビュー": "#00B050",
+            }
+
+            for trace in fig_cum_action.data:
+                if trace.name in color_map:
+                    trace.line.color = color_map[trace.name]
+
+            st.plotly_chart(fig_cum_action, width="stretch")
+
+analysis_tables = {}
+
+for metric in analysis_metrics:
+    analysis_tables[metric] = build_age_gender_table_df(
+        daily_filtered_df,
+        metric,
+        AGE_ORDER,
+    )
+
+report = build_report(
+    selected_month=selected_month,
+    selected_campaign=selected_campaign,
+    start_from_first=start_from_first,
+    days_from_start=days_from_start,
+    filtered_df=filtered_df,
+    cumulative_df=cumulative_df,
+    prev_df=prev_df,
+    place_summary=place_summary[place_cols],
+    detail_summary=detail_summary[detail_cols].head(12),
+    analysis_metrics=analysis_metrics,
+    analysis_tables=analysis_tables,
+    selected_summary_metrics=selected_summary_metrics,
 )
-# =========================
-# リーチ比追加
-# =========================
 
-place_summary["クリック(すべて)"] = place_summary.apply(
-    lambda row: (
-        f'{row["クリック(すべて)"]:,.0f} ({row["クリック(すべて)"] / row["リーチ"] * 100:.2f}%)'
-        if row["リーチ"] > 0 else f'{row["クリック(すべて)"]:,.0f}'
-    ),
-    axis=1
+st.divider()
+st.subheader("PowerPoint出力")
+
+# 条件変更後に、以前作成したPowerPointを誤って表示しないための識別情報
+current_ppt_signature = (
+    selected_month,
+    selected_campaign,
+    tuple(selected_summary_metrics),
+    tuple(analysis_metrics),
+    show_awareness,
+    show_action,
+    show_place_table,
+    show_detail_table,
 )
 
-place_summary["リンククリック"] = place_summary.apply(
-    lambda row: (
-        f'{row["リンククリック"]:,.0f} ({row["リンククリック"] / row["リーチ"] * 100:.2f}%)'
-        if row["リーチ"] > 0 else f'{row["リンククリック"]:,.0f}'
-    ),
-    axis=1
-)
+if (
+    st.session_state.get("ppt_signature") is not None
+    and st.session_state["ppt_signature"] != current_ppt_signature
+):
+    st.session_state.pop("ppt_data", None)
+    st.session_state.pop("ppt_file_name", None)
+    st.session_state.pop("ppt_signature", None)
 
-place_summary["LPビュー"] = place_summary.apply(
-    lambda row: (
-        f'{row["LPビュー"]:,.0f} ({row["LPビュー"] / row["リーチ"] * 100:.2f}%)'
-        if row["リーチ"] > 0 else f'{row["LPビュー"]:,.0f}'
-    ),
-    axis=1
-)
 
-# インプレッションにフリークエンシーを追加
-place_summary["インプレッション"] = place_summary.apply(
-    lambda row: (
-        f'{row["インプレッション"]:,.0f} ({row["インプレッション"] / row["リーチ"]:.2f})'
-        if row["リーチ"] > 0 else f'{row["インプレッション"]:,.0f}'
-    ),
-    axis=1
-)
+if st.button("PowerPoint作成", type="primary"):
 
-# リーチは通常表示
-place_summary["リーチ"] = place_summary["リーチ"].map(
-    lambda x: f"{x:,.0f}"
-)
+    with st.spinner("グラフ画像とPowerPointを作成しています..."):
 
-place_cols = [
-    "配置",
-    "配信",
-    "アトリビューション設定",
-    "インプレッション",
-    "リーチ",
-    "クリック(すべて)",
-    "リンククリック",
-]
+        # この実行ですでに作成したFigureをPNG化
+        generate_ppt_images(ppt_chart_figures)
 
-if show_lp:
-    place_cols.append("LPビュー")
+        # PNGを貼り付けてPowerPointを作成
+        ppt_path = create_meta_report_ppt(report)
 
-st.dataframe(
-    place_summary[place_cols],
-    width="stretch",
-    hide_index=True
-)
+        # ダウンロード用データを保持
+        st.session_state["ppt_data"] = Path(ppt_path).read_bytes()
+        st.session_state["ppt_file_name"] = ppt_path.name
+        st.session_state["ppt_signature"] = current_ppt_signature
+
+    st.success("PowerPointを作成しました。")
+
+
+if st.session_state.get("ppt_data") is not None:
+    st.download_button(
+        label="PowerPointをダウンロード",
+        data=st.session_state["ppt_data"],
+        file_name=st.session_state["ppt_file_name"],
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "presentationml.presentation"
+        ),
+    )
