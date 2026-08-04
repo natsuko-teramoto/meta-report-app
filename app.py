@@ -204,34 +204,44 @@ if show_summary_lp:
     selected_summary_metrics.append("ランディングページビュー")
 
 st.sidebar.markdown("### 年齢・性別分析グラフ")
+
+st.sidebar.caption("表示範囲")
+
+show_cumulative_analysis = st.sidebar.checkbox(
+    "単月に加えて累計も表示",
+    value=True,
+    key="show_cumulative_analysis",
+)
+
+st.sidebar.caption("表示指標")
 show_analysis_impression = st.sidebar.checkbox(
     "インプレッション",
     value=True,
-    key="analysis_impression"
+    key="analysis_impression",
 )
 
 show_analysis_reach = st.sidebar.checkbox(
     "リーチ",
     value=True,
-    key="analysis_reach"
+    key="analysis_reach",
 )
 
 show_analysis_click = st.sidebar.checkbox(
     "クリック(すべて)",
     value=True,
-    key="analysis_click"
+    key="analysis_click",
 )
 
 show_analysis_link_click = st.sidebar.checkbox(
     "リンククリック",
     value=True,
-    key="analysis_link_click"
+    key="analysis_link_click",
 )
 
 show_analysis_lp = st.sidebar.checkbox(
     "LPビュー",
     value=True,
-    key="analysis_lp"
+    key="analysis_lp",
 )
 
 analysis_metrics = build_analysis_metrics(
@@ -240,17 +250,6 @@ analysis_metrics = build_analysis_metrics(
     show_analysis_click,
     show_analysis_link_click,
     show_analysis_lp,
-)
-
-st.sidebar.markdown("### デイリー推移グラフ")
-show_awareness = st.sidebar.checkbox(
-    "認知推移グラフを表示",
-    value=True
-)
-
-show_action = st.sidebar.checkbox(
-    "行動推移グラフを表示",
-    value=True
 )
 
 st.sidebar.markdown("### 表示場所")
@@ -264,6 +263,20 @@ show_detail_table = st.sidebar.checkbox(
     "掲載開始からの詳細を表示",
     value=True
 )
+
+st.sidebar.markdown("### デイリー推移グラフ")
+
+show_awareness = st.sidebar.checkbox(
+    "デイリー認知推移グラフを表示",
+    value=True
+)
+
+show_action = st.sidebar.checkbox(
+    "デイリー行動推移グラフを表示",
+    value=True
+)
+
+
 
 st.sidebar.markdown("### 累計推移グラフ")
 show_cumulative_awareness = st.sidebar.checkbox(
@@ -283,8 +296,6 @@ report_settings = {
     "graphs": {},
     "analysis": {},
 }
-
-st.sidebar.markdown("---")
 
 analysis_metric_options = {
     "インプレッション": "インプレッション",
@@ -334,39 +345,68 @@ daily_all_df = daily_all_df.dropna(
     subset=["レポート開始日"]
 )
 
+# =========================
+# 選択キャンペーンの分析用データ準備
+# =========================
+
+# 選択月の月次実績
 filtered_df = monthly_df[
     monthly_df["キャンペーン名"] == selected_campaign
 ].copy()
 
+# 選択月の年齢・性別・日別実績
 daily_filtered_df = daily_df[
     daily_df["キャンペーン名"] == selected_campaign
 ].copy()
 
+# 選択月の終了日
 end_date = monthly_df["レポート終了日"].max().date()
 
+# 選択キャンペーンの全期間日別データ
+adset_daily_all_df = daily_all_df[
+    daily_all_df["キャンペーン名"] == selected_campaign
+].copy()
+
+if adset_daily_all_df.empty:
+    st.error("選択した広告セットのデイリーデータがありません。")
+    st.stop()
+
+# 掲載開始日と累計掲載日数
+start_from_first = (
+    adset_daily_all_df["レポート開始日"]
+    .min()
+    .date()
+)
+
+days_from_start = (end_date - start_from_first).days + 1
+
+# 掲載開始から選択月終了日までの月次実績
 cumulative_df = monthly_all_df[
     (monthly_all_df["キャンペーン名"] == selected_campaign)
     & (monthly_all_df["レポート終了日"].dt.date <= end_date)
 ].copy()
 
-adset_daily_all_df = daily_all_df[
-    daily_all_df["キャンペーン名"] == selected_campaign
+# 掲載開始から選択月終了日までの年齢・性別・日別実績
+cumulative_analysis_df = adset_daily_all_df[
+    (adset_daily_all_df["レポート開始日"].dt.date >= start_from_first)
+    & (adset_daily_all_df["レポート開始日"].dt.date <= end_date)
 ].copy()
 
-start_from_first = adset_daily_all_df["レポート開始日"].min().date()
-
-days_from_start = (end_date - start_from_first).days + 1
-
-start_date = cumulative_df["レポート開始日"].min().date()
-
+# 前月比較用データ
 current_month_start = monthly_df["レポート開始日"].min()
 prev_month_start = current_month_start - relativedelta(months=1)
 prev_month_end = current_month_start - relativedelta(days=1)
 
 prev_df = monthly_all_df[
     (monthly_all_df["キャンペーン名"] == selected_campaign)
-    & (monthly_all_df["レポート開始日"].dt.date >= prev_month_start.date())
-    & (monthly_all_df["レポート終了日"].dt.date <= prev_month_end.date())
+    & (
+        monthly_all_df["レポート開始日"].dt.date
+        >= prev_month_start.date()
+    )
+    & (
+        monthly_all_df["レポート終了日"].dt.date
+        <= prev_month_end.date()
+    )
 ].copy()
 
 def total(df, col):
@@ -378,15 +418,6 @@ def diff_rate(current, prev):
     if prev == 0:
         return None
     return ((current - prev) / prev) * 100
-
-# 掲載開始日・累計掲載日数
-adset_daily_all_df = daily_all_df[
-    daily_all_df["キャンペーン名"] == selected_campaign
-].copy()
-
-start_from_first = adset_daily_all_df["レポート開始日"].min().date()
-
-days_from_start = (end_date - start_from_first).days + 1
 
 # =========================
 # 抽出条件
@@ -417,7 +448,7 @@ if condition_items:
 # =========================
 
 st.subheader(
-    f"配信結果（{selected_month}）"
+    f"配信結果：{selected_month}"
 )
 
 metrics = build_summary_metrics(
@@ -504,7 +535,9 @@ else:
     st.info("累計配信結果の表示項目が選択されていません。")
 
 st.divider()
-st.subheader("男女・年齢分析")
+st.subheader(
+    f"年齢・性別分析：{selected_month}"
+)
 
 # PowerPointへ貼るグラフの登録場所
 # ブラウザ表示用に作ったFigureを再利用する
@@ -524,15 +557,20 @@ action_metrics = [
     ("LPビュー","ランディングページビュー"),
 ]
 
-def show_metric_analysis(title, metrics):
-    st.markdown(f"### {title}")
+def show_metric_analysis(
+    section_title,
+    metrics,
+    analysis_df,
+    chart_key_prefix,
+):
+    st.markdown(f"### {section_title}")
 
     for display_name, metric in metrics:
 
         if metric not in analysis_metrics:
-                    continue
+            continue
 
-        if metric not in daily_filtered_df.columns:
+        if metric not in analysis_df.columns:
             st.warning(f"{metric} 列がありません")
             continue
 
@@ -541,7 +579,7 @@ def show_metric_analysis(title, metrics):
         col_age, col_gender = st.columns([7, 3])
 
         age_fig = create_age_chart(
-            daily_filtered_df,
+            analysis_df,
             metric,
             display_name,
             AGE_ORDER,
@@ -549,26 +587,34 @@ def show_metric_analysis(title, metrics):
         )
 
         with col_age:
-            st.plotly_chart(age_fig, width="stretch")
+            st.plotly_chart(
+                age_fig,
+                width="stretch",
+                key=f"{chart_key_prefix}_age_{metric}",
+            )
 
         gender_fig = create_gender_chart(
-            daily_filtered_df,
+            analysis_df,
             metric,
             GENDER_LABEL_MAP,
             GENDER_COLOR_MAP,
         )
 
         with col_gender:
-            st.plotly_chart(gender_fig, width="stretch")
+            st.plotly_chart(
+                gender_fig,
+                width="stretch",
+                key=f"{chart_key_prefix}_gender_{metric}",
+            )
 
-        ppt_chart_figures[f"age_{metric}"] = {
+        ppt_chart_figures[f"{chart_key_prefix}_age_{metric}"] = {
             "fig": age_fig,
             "width": 800,
             "height": 450,
             "scale": 3,
         }
 
-        ppt_chart_figures[f"gender_{metric}"] = {
+        ppt_chart_figures[f"{chart_key_prefix}_gender_{metric}"] = {
             "fig": gender_fig,
             "width": 650,
             "height": 450,
@@ -576,13 +622,17 @@ def show_metric_analysis(title, metrics):
         }
 
 show_metric_analysis(
-    "認知指標",
-    awareness_metrics,
+    section_title="認知指標",
+    metrics=awareness_metrics,
+    analysis_df=daily_filtered_df,
+    chart_key_prefix="monthly",
 )
 
 show_metric_analysis(
-    "行動指標",
-    action_metrics,
+    section_title="行動指標",
+    metrics=action_metrics,
+    analysis_df=daily_filtered_df,
+    chart_key_prefix="monthly",
 )
 
 # =========================
@@ -608,41 +658,60 @@ action_chart_columns = build_action_chart_columns(
     selected_summary_metrics
 )
 
-if daily_summary.empty:
-    st.info("このキャンペーンは対象月のデイリー推移データがありません。")
-else:
+def show_daily_trend_charts(
+    daily_summary,
+    awareness_chart_columns,
+    action_chart_columns,
+    show_awareness,
+    show_action,
+    ppt_chart_figures,
+):
+    if daily_summary.empty:
+        st.info(
+            "このキャンペーンは対象月の"
+            "デイリー推移データがありません。"
+        )
+        return
 
     if show_awareness:
-        fig1 = create_awareness_chart(
+        fig_awareness = create_awareness_chart(
             daily_summary,
             awareness_chart_columns,
         )
 
-        if fig1 is not None:
+        if fig_awareness is not None:
             ppt_chart_figures["awareness"] = {
-                "fig": fig1,
+                "fig": fig_awareness,
                 "width": 1200,
                 "height": 700,
                 "scale": 2,
             }
 
-            st.plotly_chart(fig1, width="stretch")
+            st.plotly_chart(
+                fig_awareness,
+                width="stretch",
+                key="monthly_daily_awareness",
+            )
 
     if show_action:
-        fig2 = create_action_chart(
+        fig_action = create_action_chart(
             daily_summary,
             action_chart_columns,
         )
 
-        if fig2 is not None:
+        if fig_action is not None:
             ppt_chart_figures["action"] = {
-                "fig": fig2,
+                "fig": fig_action,
                 "width": 1200,
                 "height": 700,
                 "scale": 2,
             }
 
-            st.plotly_chart(fig2, width="stretch")
+            st.plotly_chart(
+                fig_action,
+                width="stretch",
+                key="monthly_daily_action",
+            )
 
 place_summary = create_placement_summary(
     monthly_place_df,
@@ -654,7 +723,9 @@ place_cols = build_place_columns(
 )
 
 if show_place_table:
-    st.subheader("表示場所分析")
+    st.subheader(
+        f"表示場所分析：{selected_month}"
+    )
 
     st.dataframe(
         place_summary[place_cols],
@@ -665,6 +736,7 @@ if show_place_table:
 # =========================
 # 掲載開始からの詳細（月次）
 # =========================
+
 
 detail_df = cumulative_df.copy()
 
@@ -746,7 +818,45 @@ if show_detail_table:
         width="stretch",
         hide_index=True
     )
+# =========================
+# 累計の男女・年齢分析
+# =========================
 
+if show_cumulative_analysis:
+    st.divider()
+    st.subheader("年齢・性別分析：累計")
+    
+
+    if cumulative_analysis_df.empty:
+        st.info("掲載開始から選択月までの年齢・性別データがありません。")
+    else:
+        show_metric_analysis(
+            section_title="認知指標",
+            metrics=awareness_metrics,
+            analysis_df=cumulative_analysis_df,
+            chart_key_prefix="cumulative",
+        )
+
+        show_metric_analysis(
+            section_title="行動指標",
+            metrics=action_metrics,
+            analysis_df=cumulative_analysis_df,
+            chart_key_prefix="cumulative",
+        )
+
+# =========================
+# 選択月のデイリー推移
+# =========================
+
+show_daily_trend_charts(
+    daily_summary=daily_summary,
+    awareness_chart_columns=awareness_chart_columns,
+    action_chart_columns=action_chart_columns,
+    show_awareness=show_awareness,
+    show_action=show_action,
+    ppt_chart_figures=ppt_chart_figures,
+)
+        
 # =========================
 # 掲載開始からの累計推移
 # =========================
@@ -793,7 +903,7 @@ else:
                 x="レポート開始日",
                 y=cum_awareness_y,
                 markers=True,
-                title="累計推移：インプレッション・リーチ"
+                title="累計認知推移"
             )
 
             fig_cum_awareness.update_traces(line=dict(width=3))
@@ -824,7 +934,7 @@ else:
                 x="レポート開始日",
                 y=cum_action_y,
                 markers=True,
-                title="累計推移：クリック・LPビュー"
+                title="累計行動推移"
             )
 
             fig_cum_action.update_traces(line=dict(width=3))
@@ -841,14 +951,56 @@ else:
 
             st.plotly_chart(fig_cum_action, width="stretch")
 
-analysis_tables = {}
+# =========================
+# PowerPoint用 年齢・性別分析セクション
+# =========================
 
-for metric in analysis_metrics:
-    analysis_tables[metric] = build_age_gender_table_df(
-        daily_filtered_df,
-        metric,
-        AGE_ORDER,
+def build_analysis_section(
+    period_key,
+    period_label,
+    analysis_df,
+    metrics,
+):
+    metric_items = {}
+
+    for metric in metrics:
+        metric_items[metric] = {
+            "age_image_key": f"{period_key}_age_{metric}",
+            "gender_image_key": f"{period_key}_gender_{metric}",
+            "table": build_age_gender_table_df(
+                analysis_df,
+                metric,
+                AGE_ORDER,
+            ),
+        }
+
+    return {
+        "period_key": period_key,
+        "period_label": period_label,
+        "metrics": metric_items,
+    }
+
+
+analysis_sections = [
+    build_analysis_section(
+        period_key="monthly",
+        period_label=selected_month,
+        analysis_df=daily_filtered_df,
+        metrics=analysis_metrics,
+    ),
+]
+
+if show_cumulative_analysis:
+    analysis_sections.append(
+        build_analysis_section(
+            period_key="cumulative",
+            period_label="累計",
+            analysis_df=cumulative_analysis_df,
+            metrics=analysis_metrics,
+        )
     )
+
+
 
 report = build_report(
     selected_month=selected_month,
@@ -860,9 +1012,12 @@ report = build_report(
     prev_df=prev_df,
     place_summary=place_summary[place_cols],
     detail_summary=detail_summary[detail_cols].head(12),
-    analysis_metrics=analysis_metrics,
-    analysis_tables=analysis_tables,
+    analysis_sections=analysis_sections,
     selected_summary_metrics=selected_summary_metrics,
+    show_place=show_place_table,
+    show_awareness=show_awareness,
+    show_action=show_action,
+    show_detail=show_detail_table,
 )
 
 st.divider()
@@ -874,6 +1029,7 @@ current_ppt_signature = (
     selected_campaign,
     tuple(selected_summary_metrics),
     tuple(analysis_metrics),
+    show_cumulative_analysis,
     show_awareness,
     show_action,
     show_place_table,

@@ -29,22 +29,39 @@ def create_meta_report_ppt(report):
             "行動推移",
             "output/images/action.png",
         )
+        
+    for section in report.get("analysis_sections", []):
 
-    for metric in report["analysis_metrics"]:
+        period_key = section["period_key"]
+        period_label = section["period_label"]
 
-        safe_metric = get_chart_file_name(metric)
+        for metric, metric_item in section["metrics"].items():
 
-        analysis = {
-            "gender_image": f"output/images/gender_{safe_metric}.png",
-            "age_image": f"output/images/age_{safe_metric}.png",
-            "table": report["analysis_tables"].get(metric),
-        }
+            age_image_key = metric_item["age_image_key"]
+            gender_image_key = metric_item["gender_image_key"]
 
-        add_metric_analysis_slide(
-            prs,
-            f"{metric}分析",
-            analysis,
-        )
+            analysis = {
+                "age_image": (
+                    f"output/images/"
+                    f"{get_chart_file_name(age_image_key)}.png"
+                ),
+                "gender_image": (
+                    f"output/images/"
+                    f"{get_chart_file_name(gender_image_key)}.png"
+                ),
+                "table": metric_item.get("table"),
+            }
+
+            if period_key == "monthly":
+                slide_title = f"{metric}分析：{period_label}"
+            else:
+                slide_title = f"{metric}分析：累計"
+
+            add_metric_analysis_slide(
+                prs,
+                slide_title,
+                analysis,
+            )
 
 
 #    if report["pages"]["gender"]:

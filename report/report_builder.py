@@ -93,14 +93,14 @@ def build_report(
     cumulative_df,
     place_summary=None,
     detail_summary=None,
-    analysis_metrics=None,
-    analysis_tables=None,
+    analysis_sections=None,
     prev_df=None,
     show_place=True,
     show_awareness=True,
     show_action=True,
     show_gender=True,
     show_age=True,
+    show_detail=True,
     selected_summary_metrics=None,
 ):
     if selected_summary_metrics is None:
@@ -130,8 +130,7 @@ def build_report(
 
         "placement": place_summary,
         "detail": detail_summary,
-        "analysis_metrics": analysis_metrics or [],
-        "analysis_tables":analysis_tables or{},
+        "analysis_sections": analysis_sections or [],
 
         "pages": {
             "summary": True,
@@ -140,7 +139,7 @@ def build_report(
             "action": show_action,
             "gender": show_gender,
             "age": show_age,
-            "detail": True,
+            "detail": show_detail,
         },
     }
 

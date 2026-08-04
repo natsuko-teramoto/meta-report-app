@@ -11,7 +11,7 @@ def create_awareness_chart(daily_summary, awareness_chart_columns):
         x="レポート開始日",
         y=awareness_chart_columns,
         markers=True,
-        title="認知推移"
+        title="デイリー認知推移"
     )
 
     fig.update_traces(line=dict(width=3))
@@ -38,7 +38,7 @@ def create_action_chart(daily_summary, action_chart_columns):
         x="レポート開始日",
         y=action_chart_columns,
         markers=True,
-        title="行動推移"
+        title="デイリー行動推移"
     )
 
     fig.update_traces(line=dict(width=3))
