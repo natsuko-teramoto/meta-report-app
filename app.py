@@ -32,6 +32,7 @@ from charts.line_chart import (
 )
 from charts.placement_chart import create_placement_summary
 
+
 st.set_page_config(
     page_title="Meta広告レポート",
     layout="wide"
@@ -39,84 +40,214 @@ st.set_page_config(
 
 st.title("Meta広告レポート")
 
+
 MONTHLY_DIR = Path("data/monthly")
 MONTHLY_PLACE_DIR = Path("data/monthly_place")
 DAILY_AGE_GENDER_DIR = Path("data/daily_age_gender")
 
+
+# =========================================================
+# Meta広告データ 共通設定
+# =========================================================
+
+# アプリ内で数値として扱うMeta広告指標。
+# Excel上で文字列として保存されていても、
+# 読み込み時に必ず数値型へ統一する。
+META_NUMERIC_COLUMNS = [
+    "インプレッション",
+    "リーチ",
+    "クリック(すべて)",
+    "リンククリック",
+    "ランディングページビュー",
+]
+
+
+# =========================================================
+# 共通関数
+# =========================================================
+
 def get_month_label(file_name):
     import re
+
     match = re.search(r"【(\d{4}年\d{1,2}月)】", file_name)
+
     if match:
         return match.group(1)
+
     return None
+
 
 def sort_month_label(month_label):
     year = int(month_label.split("年")[0])
-    month = int(month_label.split("年")[1].replace("月", ""))
+    month = int(
+        month_label.split("年")[1].replace("月", "")
+    )
+
     return year, month
+
+
+def normalize_meta_dataframe(df):
+    """
+    Meta広告データをアプリ内で扱う共通形式へ正規化する。
+
+    Excel側のセル形式や値貼りの方法にかかわらず、
+    数値指標は読み込み時に数値型へ統一する。
+    """
+
+    df = df.copy()
+
+    # 列名の前後に入った不要な空白を除去
+    df.columns = df.columns.str.strip()
+
+    # Meta広告の数値指標を数値型へ統一
+    for col in META_NUMERIC_COLUMNS:
+
+        if col not in df.columns:
+            continue
+
+        values = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .str.replace("%", "", regex=False)
+            .str.strip()
+        )
+
+        df[col] = pd.to_numeric(
+            values,
+            errors="coerce",
+        ).fillna(0)
+
+    return df
+
 
 @st.cache_data
 def read_excel_file(file_path):
+    """
+    Excelファイルを1件読み込み、
+    Meta広告データとして正規化して返す。
+    """
+
     df = pd.read_excel(file_path)
+
+    df = normalize_meta_dataframe(df)
+
     df["取込ファイル"] = file_path.name
+
     return df
 
-monthly_files = list(MONTHLY_DIR.glob("*.xlsx"))
-
-month_options = []
-
-for file in monthly_files:
-    month_label = get_month_label(file.name)
-    if month_label:
-        month_options.append(month_label)
-
-month_options = sorted(
-    list(set(month_options)),
-    key=sort_month_label
-)
-
-st.sidebar.header("条件選択")
-if st.sidebar.button("キャッシュクリア"):
-    st.cache_data.clear()
-    st.rerun()
-
-selected_month = st.sidebar.selectbox(
-    "対象月",
-    month_options,
-    index=len(month_options) - 1
-)
-
-monthly_file = next(
-    file for file in MONTHLY_DIR.glob("*.xlsx")
-    if selected_month in file.name
-)
-
-monthly_place_file = next(
-    file for file in MONTHLY_PLACE_DIR.glob("*.xlsx")
-    if selected_month in file.name
-)
-
-daily_age_gender_file = next(
-    file for file in DAILY_AGE_GENDER_DIR.glob("*.xlsx")
-    if selected_month in file.name
-)
-
-monthly_df = read_excel_file(monthly_file)
-monthly_place_df = read_excel_file(monthly_place_file)
-daily_df = read_excel_file(daily_age_gender_file)
 
 @st.cache_data
 def read_excel_files(files):
+    """
+    複数Excelファイルを読み込み、
+    各ファイルを正規化してから結合する。
+    """
+
     dfs = []
+
     for file in files:
+
         df = pd.read_excel(file)
+
+        df = normalize_meta_dataframe(df)
+
         df["取込ファイル"] = file.name
+
         dfs.append(df)
 
     if not dfs:
         return pd.DataFrame()
 
-    return pd.concat(dfs, ignore_index=True)
+    return pd.concat(
+        dfs,
+        ignore_index=True,
+    )
+
+
+# =========================================================
+# 対象月一覧
+# =========================================================
+
+monthly_files = list(
+    MONTHLY_DIR.glob("*.xlsx")
+)
+
+month_options = []
+
+for file in monthly_files:
+
+    month_label = get_month_label(file.name)
+
+    if month_label:
+        month_options.append(month_label)
+
+
+month_options = sorted(
+    list(set(month_options)),
+    key=sort_month_label,
+)
+
+
+# =========================================================
+# サイドバー
+# =========================================================
+
+st.sidebar.header("条件選択")
+
+
+if st.sidebar.button("キャッシュクリア"):
+    st.cache_data.clear()
+    st.rerun()
+
+
+selected_month = st.sidebar.selectbox(
+    "対象月",
+    month_options,
+    index=len(month_options) - 1,
+)
+
+
+# =========================================================
+# 対象ファイル
+# =========================================================
+
+monthly_file = next(
+    file
+    for file in MONTHLY_DIR.glob("*.xlsx")
+    if selected_month in file.name
+)
+
+
+monthly_place_file = next(
+    file
+    for file in MONTHLY_PLACE_DIR.glob("*.xlsx")
+    if selected_month in file.name
+)
+
+
+daily_age_gender_file = next(
+    file
+    for file in DAILY_AGE_GENDER_DIR.glob("*.xlsx")
+    if selected_month in file.name
+)
+
+
+# =========================================================
+# データ読み込み
+# =========================================================
+
+monthly_df = read_excel_file(
+    monthly_file
+)
+
+monthly_place_df = read_excel_file(
+    monthly_place_file
+)
+
+daily_df = read_excel_file(
+    daily_age_gender_file
+)
 
 monthly_all_df = read_excel_files(monthly_files)
 
