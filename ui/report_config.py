@@ -35,6 +35,15 @@ PLACEMENT_ITEMS = [
 
 
 def initialize_report_view_state():
+    default_hidden = {
+        "report_basic_appeal",
+        "report_basic_area",
+        "report_basic_age",
+        "report_basic_gender",
+        "report_metric_link_clicks",
+        "report_metric_landing_page_views",
+    }
+
     for prefix, items in (
         ("report_basic_", BASIC_INFO_ITEMS),
         ("report_metric_", REPORT_METRIC_ITEMS),
@@ -42,7 +51,11 @@ def initialize_report_view_state():
         ("report_placement_", PLACEMENT_ITEMS),
     ):
         for key, _ in items:
-            st.session_state.setdefault(f"{prefix}{key}", True)
+            state_key = f"{prefix}{key}"
+            st.session_state.setdefault(
+                state_key,
+                state_key not in default_hidden,
+            )
 
 
 def is_section_visible(section_key):

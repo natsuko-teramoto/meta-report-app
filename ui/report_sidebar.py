@@ -11,13 +11,13 @@ def render_report_sidebar():
     initialize_report_view_state()
     with st.sidebar:
         st.header("表示項目")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("すべて表示", use_container_width=True, key="show_all_report_items"):
-                _set_all_report_items(True); st.rerun()
-        with c2:
-            if st.button("すべて非表示", use_container_width=True, key="hide_all_report_items"):
-                _set_all_report_items(False); st.rerun()
+        if st.button(
+            "すべて表示",
+            use_container_width=True,
+            key="show_all_report_items",
+        ):
+            _set_all_report_items(True)
+            st.rerun()
         st.divider()
         st.markdown("**基本情報**")
         for key, label in BASIC_INFO_ITEMS: st.checkbox(label, key=f"report_basic_{key}")
@@ -33,3 +33,4 @@ def render_report_sidebar():
         st.checkbox("デイリー推移グラフ", key="report_section_daily_trend")
         st.checkbox("累計 リーチ・インプレッショングラフ", key="report_section_reach_impression_gap")
         st.checkbox("配信からの月次推移グラフ", key="report_section_monthly_trend")
+
