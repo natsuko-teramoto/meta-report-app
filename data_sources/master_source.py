@@ -2,6 +2,7 @@ from pathlib import Path
 
 import gspread
 import pandas as pd
+import streamlit as st
 
 
 # =========================================================
@@ -30,21 +31,50 @@ SHEET_NAMES = {
 
 def _get_spreadsheet():
     """
-    Google Sheetsへ接続し、
-    Meta広告管理スプレッドシートを返す。
+    Google Sheetsへ接続する。
+
+    ローカル:
+        credentials.json を使用
+
+    Streamlit Cloud:
+        st.secrets["gcp_service_account"] を使用
     """
 
-    if not CREDENTIALS_FILE.exists():
-        raise FileNotFoundError(
-            f"認証ファイルが見つかりません: {CREDENTIALS_FILE}"
+    # -------------------------------------------------
+    # ローカル環境
+    # -------------------------------------------------
+    if CREDENTIALS_FILE.exists():
+
+        client = gspread.service_account(
+            filename=str(CREDENTIALS_FILE)
         )
 
-    client = gspread.service_account(
-        filename=str(CREDENTIALS_FILE)
-    )
+        return client.open_by_key(SPREADSHEET_ID)
+
+    # -------------------------------------------------
+    # Streamlit Cloud
+    # -------------------------------------------------
+    try:
+        credentials_info = dict(
+            st.secrets["gcp_service_account"]
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Google Sheets認証情報を取得できません。"
+            "Streamlit Secrets の "
+            "[gcp_service_account] を確認してください。"
+        ) from exc
+
+    try:
+        client = gspread.service_account_from_dict(
+            credentials_info
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Google Sheets認証情報の読み込みに失敗しました。"
+        ) from exc
 
     return client.open_by_key(SPREADSHEET_ID)
-
 
 # =========================================================
 # 1シート読み込み
