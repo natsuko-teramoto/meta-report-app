@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 
 PLOTLY_FONT_FAMILY = (
     "Noto Sana CJK JP,"
@@ -32,12 +33,14 @@ def save_chart(
     safe_name = get_chart_file_name(name)
     file_path = IMAGE_DIR / f"{safe_name}.png"
 
+    _t0 = perf_counter()
     fig.write_image(
         file_path,
         width=width,
         height=height,
         scale=scale,
     )
+    print(f"[SPEED] chart {safe_name}: {perf_counter()-_t0:.2f}s ({width}x{height}, scale={scale})")
 
     return file_path
 
