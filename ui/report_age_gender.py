@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from ui.report_config import is_section_visible, is_metric_visible, any_metric_visible
 from ui.report_common import build_report_period_label
-GENDER_COLORS={"女性":"#009BFC","男性":"#4000B8","不明":"#BDBDBD"}
+GENDER_COLORS={"女性":"#FF2D8D","男性":"#4000B8","不明":"#BDBDBD"}
 
 def _build_age_gender_dataframe(
     age_gender_rows,

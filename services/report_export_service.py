@@ -11,7 +11,7 @@ METRIC_CONFIG = {
     "landing_page_views": {"label": "LPビュー", "group": "action", "color": "#00B894"},
 }
 
-GENDER_COLORS = {"女性": "#009BFC", "男性": "#4000B8", "不明": "#BDBDBD"}
+GENDER_COLORS = {"女性": "#FF2D8D", "男性": "#4000B8", "不明": "#BDBDBD"}
 
 PLACEMENT_COLORS = {
     "Instagramフィード": "#F58529",

@@ -5,7 +5,7 @@ GENDER_LABEL_MAP = {
 }
 
 GENDER_COLOR_MAP = {
-    "女性": "#009BFC",
+    "女性": "#FF2D8D",
     "男性": "#4000B8",
     "不明": "#BFBFBF",
 }
