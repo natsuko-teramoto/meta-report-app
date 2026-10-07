@@ -264,22 +264,64 @@ def build_ad_search_data(master_data=None):
 
     if not meta_history.empty:
 
-        new_result = meta_history.merge(
-            cases[available_case_columns],
+        # -------------------------------------------------
+        # API広告
+        #
+        # Meta配信履歴にすでに存在する列は、
+        # Meta配信履歴を正としてそのまま使用する。
+        #
+        # マスタからは、Meta配信履歴に存在しない
+        # 補足情報だけを取得する。
+        # -------------------------------------------------
+
+        new_result = meta_history.copy()
+
+        # 案件マスタから補足情報を追加
+        case_extra_columns = [
+            column
+            for column in available_case_columns
+            if (
+                column == "案件ID"
+                or column not in new_result.columns
+            )
+        ]
+
+        new_result = new_result.merge(
+            cases[case_extra_columns],
             on="案件ID",
             how="left",
             validate="many_to_one",
         )
 
+        # Meta顧客マスタから補足情報を追加
+        customer_extra_columns = [
+            column
+            for column in available_customer_columns
+            if (
+                column == "Meta顧客ID"
+                or column not in new_result.columns
+            )
+        ]
+
         new_result = new_result.merge(
-            customers[available_customer_columns],
+            customers[customer_extra_columns],
             on="Meta顧客ID",
             how="left",
             validate="many_to_one",
         )
 
+        # 施設マスタから補足情報を追加
+        facility_extra_columns = [
+            column
+            for column in available_facility_columns
+            if (
+                column == "施設ID"
+                or column not in new_result.columns
+            )
+        ]
+
         new_result = new_result.merge(
-            facilities[available_facility_columns],
+            facilities[facility_extra_columns],
             on="施設ID",
             how="left",
             validate="many_to_one",
@@ -391,6 +433,36 @@ def build_ad_search_data(master_data=None):
             legacy_result["ad_account_id"] = ""
 
             legacy_result["データ種別"] = "LEGACY"
+
+            # -------------------------------------------------
+            # レガシー広告の状態
+            #
+            # Meta APIから状態を取得できないため、
+            # 配信終了日で判定する。
+            #
+            # 配信終了日 < 今日 → 配信終了
+            # それ以外         → ACTIVE
+            # -------------------------------------------------
+
+            today = pd.Timestamp.today().normalize()
+
+            if "配信終了" in legacy_result.columns:
+
+                end_dates = pd.to_datetime(
+                    legacy_result["配信終了"],
+                    errors="coerce",
+                )
+
+                legacy_result["状態"] = "ACTIVE"
+
+                legacy_result.loc[
+                    end_dates.notna()
+                    & (end_dates < today),
+                    "状態",
+                ] = "配信終了"
+
+            else:
+                legacy_result["状態"] = "ACTIVE"
 
 
     # =====================================================
@@ -518,6 +590,7 @@ def build_ad_search_data(master_data=None):
         "性別",
         "配信開始",
         "配信終了",
+        "状態",
 
         "campaign_id",
         "adset_id",
@@ -929,3 +1002,70 @@ def get_customer_ads(
     ]
 
     return result.reset_index(drop=True)
+
+# =========================================================
+# 広告キー
+# =========================================================
+
+def get_ad_key(row):
+    """
+    API広告・レガシー広告の両方で使える一意キーを返す。
+
+    API広告:
+        api:<ad_id>
+
+    レガシー広告:
+        legacy:<案件ID>:<キャンペーン名>
+    """
+
+    ad_id = str(
+        row.get("ad_id", "") or ""
+    ).strip()
+
+    if ad_id:
+        return f"api:{ad_id}"
+
+    case_id = str(
+        row.get("案件ID", "") or ""
+    ).strip()
+
+    campaign_name = str(
+        row.get(
+            "キャンペーン名",
+            "",
+        ) or ""
+    ).strip()
+
+    if case_id or campaign_name:
+        return (
+            f"legacy:{case_id}:"
+            f"{campaign_name}"
+        )
+
+    return ""
+
+
+def find_ad_by_key(
+    ad_data,
+    ad_key,
+):
+    """
+    API広告・レガシー広告共通の広告キーから
+    広告情報を取得する。
+    """
+
+    if not ad_key:
+        return None
+
+    matched = ad_data[
+        ad_data.apply(
+            get_ad_key,
+            axis=1,
+        ).astype(str)
+        == str(ad_key)
+    ]
+
+    if matched.empty:
+        return None
+
+    return matched.iloc[0]

@@ -1,6 +1,9 @@
 import streamlit as st
 
-from services.ad_search import build_ad_search_data
+from services.ad_search import (
+    build_ad_search_data,
+    find_ad_by_key,
+)
 from ui.ad_search_view import render_ad_search_view
 from ui.report_view import render_report_view
 from ui.report_export import render_api_ppt_export_controls
@@ -10,8 +13,19 @@ from time import perf_counter
 from services.period import build_report_period
 from services.report_service import build_period_result
 from services.legacy_report_service import build_legacy_period_result
+from data_sources.master_source import (
+    load_change_requests,
+    load_change_request_details,
+)
+from services.change_request_service import (
+    apply_completed_changes_to_ad_data,
+)
 
+# =========================================================
+# 速度計測
+# =========================================================
 
+APP_START_TIME = perf_counter()
 
 st.set_page_config(
     page_title="Meta広告レポート",
@@ -25,59 +39,6 @@ def load_ad_data():
     return build_ad_search_data()
 
 
-def _get_ad_key(row):
-    """
-    API広告・レガシー広告共通の広告キーを返す。
-    """
-
-    ad_id = str(
-        row.get("ad_id", "") or ""
-    ).strip()
-
-    if ad_id:
-        return f"api:{ad_id}"
-
-    case_id = str(
-        row.get("案件ID", "") or ""
-    ).strip()
-
-    campaign_name = str(
-        row.get("キャンペーン名", "") or ""
-    ).strip()
-
-    if case_id or campaign_name:
-        return (
-            f"legacy:{case_id}:"
-            f"{campaign_name}"
-        )
-
-    return ""
-
-
-def find_ad_by_id(
-    ad_data,
-    ad_key,
-):
-    """
-    API広告・レガシー広告共通キーから
-    広告情報を取得する。
-    """
-
-    if not ad_key:
-        return None
-
-    matched = ad_data[
-        ad_data.apply(
-            _get_ad_key,
-            axis=1,
-        ).astype(str)
-        == str(ad_key)
-    ]
-
-    if matched.empty:
-        return None
-
-    return matched.iloc[0]
 
 def parse_publication_start(value):
     if value is None:
@@ -205,9 +166,66 @@ if "api_view_mode" not in st.session_state:
 
 
 try:
-    ad_data = load_ad_data()
+    # =====================================================
+    # 広告元データ
+    # =====================================================
+
+    _t0 = perf_counter()
+
+    base_ad_data = load_ad_data()
+
+    print(
+        "[SPEED] ① 広告元データ取得: "
+        f"{perf_counter() - _t0:.2f}秒"
+    )
 
 
+    # =====================================================
+    # 変更依頼 親
+    # =====================================================
+
+    _t0 = perf_counter()
+
+    change_requests = load_change_requests()
+
+    print(
+        "[SPEED] ② 変更依頼・親取得: "
+        f"{perf_counter() - _t0:.2f}秒"
+    )
+
+
+    # =====================================================
+    # 変更依頼 明細
+    # =====================================================
+
+    _t0 = perf_counter()
+
+    change_request_details = (
+        load_change_request_details()
+    )
+
+    print(
+        "[SPEED] ③ 変更依頼・明細取得: "
+        f"{perf_counter() - _t0:.2f}秒"
+    )
+
+
+    # =====================================================
+    # 完了済み変更を現在設定へ反映
+    # =====================================================
+
+    _t0 = perf_counter()
+
+    ad_data = apply_completed_changes_to_ad_data(
+        base_ad_data,
+        parent_df=change_requests,
+        detail_df=change_request_details,
+    )
+
+    print(
+        "[SPEED] ④ 完了済み変更反映: "
+        f"{perf_counter() - _t0:.2f}秒"
+    )
 
 except Exception as exc:
     st.error(
@@ -219,7 +237,15 @@ except Exception as exc:
 
 if st.session_state.api_view_mode == "search":
 
-    move_to_report = render_ad_search_view(ad_data)
+    move_to_report = render_ad_search_view(
+        ad_data,
+        base_ad_data,
+    )
+
+    print(
+        "[SPEED] アプリ開始 → 検索画面表示完了: "
+        f"{perf_counter() - APP_START_TIME:.2f}秒"
+    )
 
     if move_to_report:
         st.session_state.api_view_mode = "report"
@@ -228,12 +254,12 @@ if st.session_state.api_view_mode == "search":
 
 elif st.session_state.api_view_mode == "report":
 
-    report_1_ad = find_ad_by_id(
+    report_1_ad = find_ad_by_key(
         ad_data,
         st.session_state.get("selected_ad_1_id"),
     )
 
-    report_2_ad = find_ad_by_id(
+    report_2_ad = find_ad_by_key(
         ad_data,
         st.session_state.get("selected_ad_2_id"),
     )

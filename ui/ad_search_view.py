@@ -1,17 +1,390 @@
 from datetime import date
+from time import perf_counter
 import pandas as pd
 import streamlit as st
 
+from data_sources.master_source import load_applicant_master
 from services.ad_search import (
     get_search_options,
     search_ads,
     build_customer_results,
     get_customer_ads,
 )
+from services.change_request_service import (
+    get_pending_change_requests,
+    build_ad_change_history_with_before_after,
+)
 from services.period import (
     PERIOD_MODE_MONTH,
     PERIOD_MODE_CUSTOM,
 )
+from ui.change_request_view import (
+    render_change_request_view,
+)
+
+
+def _inject_change_request_style():
+    """
+    変更・停止依頼ボタン専用スタイル。
+    """
+
+    st.markdown(
+        """
+        <style>
+        div[class*="st-key-change-request-button-"] button {
+            background-color: #fff4cc !important;
+            border-color: #e3c45b !important;
+            color: #4a3b00 !important;
+        }
+
+        .st-key-change-request-button button:hover {
+            background-color: #ffe99a !important;
+            border-color: #c9a72d !important;
+            color: #332800 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# =========================================================
+# 変更・停止依頼：未完了一覧
+# =========================================================
+
+def _render_pending_change_requests(
+    ad_data,
+):
+    """
+    未対応の変更・停止依頼を
+    1依頼 = 1行で表示する。
+    """
+
+    try:
+        pending_df = get_pending_change_requests(
+            ad_data=ad_data,
+        )
+
+    except Exception as exc:
+        st.error(
+            "変更・停止依頼の取得に失敗しました。"
+        )
+        st.exception(exc)
+        return
+
+    if pending_df.empty:
+        return
+
+    st.divider()
+
+    st.subheader(
+        f"変更・停止依頼　 {len(pending_df)}件"
+    )
+
+    # =====================================================
+    # ヘッダー
+    # =====================================================
+
+    header_cols = st.columns(
+        [1.5, 2.4, 1.3, 1.2, 1.5, 3.0, 2.0, 1.0],
+        gap="small",
+    )
+
+    headers = [
+        "依頼日時",
+        "施設名",
+        "訴求内容",
+        "申請者",
+        "依頼内容",
+        "申請内容詳細",
+        "掲載アカウント",
+        "対応状況",
+    ]
+
+    for col, header in zip(
+        header_cols,
+        headers,
+    ):
+        with col:
+            st.markdown(
+                f"**{header}**"
+            )
+
+    # =====================================================
+    # 依頼一覧
+    # =====================================================
+
+    for _, row in pending_df.iterrows():
+
+        request_id = str(
+            row.get(
+                "依頼ID",
+                "",
+            )
+        ).strip()
+
+        row_cols = st.columns(
+            [1.5, 2.4, 1.3, 1.2, 1.5, 3.0, 2.0, 1.0],
+            gap="small",
+            vertical_alignment="center",
+        )
+
+        with row_cols[0]:
+            st.write(
+                row.get(
+                    "依頼日時",
+                    "",
+                )
+            )
+
+        with row_cols[1]:
+            st.write(
+                row.get(
+                    "施設名",
+                    "",
+                )
+            )
+
+        with row_cols[2]:
+            st.write(
+                row.get(
+                    "訴求内容",
+                    "",
+                )
+            )
+
+        with row_cols[3]:
+            st.write(
+                row.get(
+                    "申請者",
+                    "",
+                )
+            )
+
+        with row_cols[4]:
+            st.write(
+                row.get(
+                    "依頼内容",
+                    "",
+                )
+            )
+
+        with row_cols[5]:
+            st.write(
+                row.get(
+                    "申請内容詳細",
+                    "",
+                )
+            )
+
+        with row_cols[6]:
+            st.write(
+                row.get(
+                    "広告アカウント名",
+                    "",
+                )
+            )
+
+        with row_cols[7]:
+
+            status = str(
+                row.get(
+                    "対応状況",
+                    "",
+                ) or ""
+            ).strip()
+
+            st.write(
+                status
+            )
+
+# =========================================================
+# 変更履歴
+# =========================================================
+
+def _render_change_history(
+    ad_data,
+    base_ad_data,
+):
+    """
+    選択した広告の変更・停止依頼履歴を表示する。
+    """
+
+    ad_key = st.session_state.get(
+        "change_history_ad_key"
+    )
+
+    if not ad_key:
+        return
+
+    selected_ad = _find_selected_ad(
+        ad_data,
+        ad_key,
+    )
+
+    if selected_ad is None:
+        st.error(
+            "対象広告が見つかりません。"
+        )
+        return
+
+    base_ad = _find_selected_ad(
+        base_ad_data,
+        ad_key,
+    )
+
+    if base_ad is None:
+        st.error(
+            "対象広告の初期設定が見つかりません。"
+        )
+        return
+
+    history_df = (
+        build_ad_change_history_with_before_after(
+            base_ad,
+            ad_key,
+        )
+    )
+
+    st.divider()
+
+    # =====================================================
+    # 見出し
+    # =====================================================
+
+    title_col, close_col = st.columns(
+        [5, 1],
+        vertical_alignment="center",
+    )
+
+    with title_col:
+
+        facility_name = _display_value(
+            selected_ad,
+            "施設名",
+        )
+
+        appeal = _display_value(
+            selected_ad,
+            "訴求内容",
+        )
+
+        st.subheader(
+            "変更履歴"
+        )
+
+        st.caption(
+            f"{facility_name}｜{appeal}"
+        )
+
+    with close_col:
+
+        if st.button(
+            "閉じる",
+            key="close_change_history",
+            use_container_width=True,
+        ):
+
+            st.session_state[
+                "change_history_open"
+            ] = False
+
+            st.session_state[
+                "change_history_ad_key"
+            ] = None
+
+            st.rerun()
+
+
+    # =====================================================
+    # 履歴なし
+    # =====================================================
+
+    if history_df.empty:
+
+        st.info(
+            "変更履歴はありません。"
+        )
+
+        return
+
+
+    # =====================================================
+    # 履歴一覧
+    # =====================================================
+
+    st.caption(
+        f"全 {len(history_df)}件"
+    )
+
+    header_cols = st.columns(
+        [1.5, 1.2, 1.6, 3.0, 1.0, 1.5],
+        gap="small",
+    )
+
+    headers = [
+        "申請日時",
+        "申請者",
+        "依頼内容",
+        "申請内容詳細",
+        "対応状況",
+        "対応完了日時",
+    ]
+
+    for col, header in zip(
+        header_cols,
+        headers,
+    ):
+
+        with col:
+            st.markdown(
+                f"**{header}**"
+            )
+
+
+    for _, row in history_df.iterrows():
+
+        row_cols = st.columns(
+            [1.5, 1.2, 1.6, 3.0, 1.0, 1.5],
+            gap="small",
+            vertical_alignment="center",
+        )
+
+        values = [
+            row.get(
+                "依頼日時",
+                "",
+            ),
+            row.get(
+                "申請者",
+                "",
+            ),
+            row.get(
+                "依頼内容",
+                "",
+            ),
+            row.get(
+                "申請内容詳細",
+                "",
+            ),
+            row.get(
+                "対応状況",
+                "",
+            ),
+            row.get(
+                "対応完了日時",
+                "",
+            ),
+        ]
+
+        for col, value in zip(
+            row_cols,
+            values,
+        ):
+
+            with col:
+                st.write(
+                    value
+                )
 
 # =========================================================
 # 定数
@@ -46,11 +419,18 @@ SEARCH_DEFAULTS = {
     # 1件だけ作る確認
     "confirm_single_report": False,
 
+    # 変更履歴
+    "change_history_open": False,
+    "change_history_ad_key": None,
+
     # 検索メッセージ
     "ad_search_1_message": "",
     "ad_search_2_message": "",
+    
+    # 速度計測
+    "speed_search_start": None,
+    "speed_report_period_start": None,
 }
-
 
 def initialize_ad_search_state():
     """
@@ -365,14 +745,21 @@ def _render_ad_card(
         else False
     )
 
+    compare_enabled = (
+        st.session_state.get(
+            "compare_search_enabled",
+            False,
+        )
+    )
+
     with st.container(border=True):
 
         # -------------------------------------------------
-        # 1段目：訴求 + ボタン
+        # 1段目：広告情報 + 操作ボタン
         # -------------------------------------------------
 
         title_col, button_col = st.columns(
-            [5, 1.4],
+            [5, 2.8],
             vertical_alignment="center",
         )
 
@@ -388,47 +775,172 @@ def _render_ad_card(
                 "訴求内容",
             )
 
+            status = _display_value(
+                row,
+                "状態",
+            )
+
+            if status == "ACTIVE":
+                status_display = "⭐ACTIVE⭐"
+            else:
+                status_display = status
+
+            data_type = str(
+                row.get(
+                    "データ種別",
+                    "",
+                )
+            ).strip()
+
+            if data_type == "API":
+                connection_display = "API連携"
+            else:
+                connection_display = (
+                    "非連携アカウント"
+                )
+
             st.markdown(
-                f"**{facility_name}｜{appeal}**"
+                f"**{facility_name}"
+                f"｜{appeal}"
+                f"｜{status_display}"
+                f"｜{connection_display}**"
             )
 
         with button_col:
 
-            if is_selected:
+            # -----------------------------------------
+            # 比較モード
+            # -----------------------------------------
 
-                st.button(
-                    "選択中",
-                    key=(
-                        f"selected_ad_"
-                        f"{slot_number}_"
-                        f"{ad_key}"
-                    ),
-                    disabled=True,
-                    use_container_width=True,
-                )
+            if compare_enabled:
+
+                if is_selected:
+
+                    st.button(
+                        "比較対象に選択中",
+                        key=(
+                            f"selected_ad_"
+                            f"{slot_number}_"
+                            f"{ad_key}"
+                        ),
+                        disabled=True,
+                        use_container_width=True,
+                    )
+
+                else:
+
+                    if st.button(
+                        "比較対象に選択",
+                        key=(
+                            f"select_ad_"
+                            f"{slot_number}_"
+                            f"{ad_key}"
+                        ),
+                        type="primary",
+                        use_container_width=True,
+                    ):
+
+                        _select_ad(
+                            ad_key,
+                            slot_number,
+                        )
+
+                        st.rerun()
+
+            # -----------------------------------------
+            # 通常モード
+            # -----------------------------------------
 
             else:
 
-                if st.button(
-                    "この広告を選択",
-                    key=(
-                        f"select_ad_"
-                        f"{slot_number}_"
-                        f"{ad_key}"
-                    ),
-                    type="primary",
-                    use_container_width=True,
-                ):
+                report_col, request_col, history_col = st.columns(3)
 
-                    _select_ad(
-                        ad_key,
-                        slot_number,
-                    )
+                with report_col:
 
-                    st.rerun()
+                    if st.button(
+                        "レポート作成",
+                        key=(
+                            f"report_ad_"
+                            f"{slot_number}_"
+                            f"{ad_key}"
+                        ),
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        st.session_state.speed_report_period_start = (
+                            perf_counter()
+                        )                    
+
+                        _select_ad(
+                            ad_key,
+                            slot_number,
+                        )
+
+                        st.session_state[
+                            "report_period_open"
+                        ] = True
+
+                        st.session_state[
+                            "confirm_single_report"
+                        ] = False
+
+                        st.rerun()
+
+                with request_col:
+
+                    if status in [
+                        "ACTIVE",
+                        "PAUSED",
+                    ]:
+
+                        with st.container(
+                            key=f"change-request-button-{slot_number}-{ad_key}"
+                        ):
+
+                            if st.button(
+                                "変更・停止依頼",
+                                key=(
+                                    f"change_request_"
+                                    f"{slot_number}_"
+                                    f"{ad_key}"
+                                ),
+                                use_container_width=True,
+                            ):
+
+                                st.session_state[
+                                    "change_request_ad_key"
+                                ] = ad_key
+
+                                st.session_state[
+                                    "change_request_open"
+                                ] = True
+
+                                st.rerun()
+
+                with history_col:
+
+                    if st.button(
+                        "変更履歴",
+                        key=(
+                            f"change_history_"
+                            f"{slot_number}_"
+                            f"{ad_key}"
+                        ),
+                        use_container_width=True,
+                    ):
+
+                        st.session_state[
+                            "change_history_ad_key"
+                        ] = ad_key
+
+                        st.session_state[
+                            "change_history_open"
+                        ] = True
+
+                        st.rerun()
 
         # -------------------------------------------------
-        # 2段目：全項目を横一列
+        # 2段目：広告設定
         # -------------------------------------------------
 
         info_cols = st.columns(
@@ -439,7 +951,6 @@ def _render_ad_card(
                 0.8,   # 性別
                 1.1,   # 掲載開始
                 1.1,   # 掲載終了
-                0.7,   # 状態
             ],
             vertical_alignment="top",
         )
@@ -487,10 +998,6 @@ def _render_ad_card(
                     "配信終了",
                 ),
             ),
-            (
-                "状態",
-                "―",
-            ),
         ]
 
         for col, (
@@ -504,7 +1011,6 @@ def _render_ad_card(
             with col:
                 st.caption(label)
                 st.write(value)
-
 
 # =========================================================
 # 顧客一覧 + 直下広告
@@ -804,7 +1310,7 @@ def _render_selected_ad_summary(
     slot_number,
 ):
     """
-    選択中広告をコンパクトに表示する。
+    選択中広告の内容を確認できる形で表示する。
     """
 
     ad_key = st.session_state.get(
@@ -823,6 +1329,10 @@ def _render_selected_ad_summary(
         border=True
     ):
 
+        # -------------------------------------------------
+        # 1段目：広告名 + 選択解除
+        # -------------------------------------------------
+
         left_col, right_col = (
             st.columns(
                 [5, 1],
@@ -832,34 +1342,45 @@ def _render_selected_ad_summary(
 
         with left_col:
 
-            customer_name = (
-                _display_value(
-                    selected_ad,
-                    "案件名",
-                )
+            facility_name = _display_value(
+                selected_ad,
+                "施設名",
             )
 
-            facility_name = (
-                _display_value(
-                    selected_ad,
-                    "施設名",
-                )
+            appeal = _display_value(
+                selected_ad,
+                "訴求内容",
             )
 
-            appeal = (
-                _display_value(
-                    selected_ad,
-                    "訴求内容",
-                )
+            status = _display_value(
+                selected_ad,
+                "状態",
             )
+
+            if status == "ACTIVE":
+                status_display = "⭐ACTIVE⭐"
+            else:
+                status_display = status
+
+            data_type = str(
+                selected_ad.get(
+                    "データ種別",
+                    "",
+                )
+            ).strip()
+
+            if data_type == "API":
+                connection_display = "API連携"
+            else:
+                connection_display = (
+                    "非連携アカウント"
+                )
 
             st.markdown(
-                f"**{customer_name}**"
-            )
-
-            st.caption(
-                f"{facility_name}"
-                f"　｜　{appeal}"
+                f"**{facility_name}"
+                f"｜{appeal}"
+                f"｜{status_display}"
+                f"｜{connection_display}**"
             )
 
         with right_col:
@@ -879,6 +1400,70 @@ def _render_selected_ad_summary(
 
                 st.rerun()
 
+        # -------------------------------------------------
+        # 2段目：選択した広告の設定内容
+        # -------------------------------------------------
+
+        info_cols = st.columns(
+            [
+                1.5,   # エリア
+                1.0,   # 年齢
+                0.8,   # 性別
+                1.1,   # 掲載開始
+                1.1,   # 掲載終了
+            ],
+            vertical_alignment="top",
+        )
+
+        items = [
+            (
+                "エリア",
+                _display_value(
+                    selected_ad,
+                    "エリア",
+                ),
+            ),
+            (
+                "年齢",
+                _display_value(
+                    selected_ad,
+                    "年齢",
+                ),
+            ),
+            (
+                "性別",
+                _display_value(
+                    selected_ad,
+                    "性別",
+                ),
+            ),
+            (
+                "掲載開始",
+                _display_value(
+                    selected_ad,
+                    "配信開始",
+                ),
+            ),
+            (
+                "掲載終了",
+                _display_value(
+                    selected_ad,
+                    "配信終了",
+                ),
+            ),
+        ]
+
+        for col, (
+            label,
+            value,
+        ) in zip(
+            info_cols,
+            items,
+        ):
+
+            with col:
+                st.caption(label)
+                st.write(value)
 
 # =========================================================
 # 比較②
@@ -1100,6 +1685,7 @@ def _validate_period_input(
 
 def render_ad_search_view(
     ad_data,
+    base_ad_data,
 ):
     """
     広告検索画面。
@@ -1110,7 +1696,40 @@ def render_ad_search_view(
         レポート画面へ遷移する場合 True
     """
 
+    _inject_change_request_style()
+
     initialize_ad_search_state()
+
+    # =====================================================
+    # 変更・停止依頼画面
+    # =====================================================
+
+    if st.session_state.get(
+        "change_request_open",
+        False,
+    ):
+
+        render_change_request_view(
+            ad_data
+        )
+
+        return False
+
+    # =====================================================
+    # 変更履歴画面
+    # =====================================================
+
+    if st.session_state.get(
+        "change_history_open",
+        False,
+    ):
+
+        _render_change_history(
+            ad_data,
+            base_ad_data,
+        )
+
+        return False
 
     options = get_search_options(
         ad_data
@@ -1124,6 +1743,8 @@ def render_ad_search_view(
         "広告を検索して"
         "レポートを作成します。"
     )
+
+
 
     compare_enabled = (
         st.session_state.compare_search_enabled
@@ -1213,6 +1834,8 @@ def render_ad_search_view(
         key="shared_ad_search_button",
     ):
 
+        st.session_state.speed_search_start = perf_counter()
+
         _execute_one_search(
             ad_data=ad_data,
             form_values=search_1_form,
@@ -1251,6 +1874,7 @@ def render_ad_search_view(
         st.session_state.confirm_single_report = False
 
         st.rerun()
+
 
     # =====================================================
     # 検索メッセージ
@@ -1299,6 +1923,11 @@ def render_ad_search_view(
         )
     )
 
+    if not has_result_area:
+        _render_pending_change_requests(
+            ad_data,
+        )
+
     if has_result_area:
 
         st.divider()
@@ -1346,6 +1975,22 @@ def render_ad_search_view(
                     slot_number=2,
                     clear_prefix="ad_search_2",
                 )
+
+    # =====================================================
+    # 検索速度計測
+    # =====================================================
+
+    if (
+        has_result_area
+        and st.session_state.get("speed_search_start")
+        is not None
+    ):
+        print(
+            "[SPEED] 検索ボタン → 検索結果表示完了: "
+            f"{perf_counter() - st.session_state.speed_search_start:.2f}秒"
+        )
+
+        st.session_state.speed_search_start = None
 
     # =====================================================
     # 選択中広告
@@ -1512,7 +2157,9 @@ def render_ad_search_view(
 
             st.caption(
                 "月次はカレンダー月単位、"
-                "期間指定は任意の日付範囲で集計します。"
+                "期間指定は任意の日付範囲で集計します。\n\n"
+                "API連携：月次、期間指定どちらも可能  \n"
+                "非連携アカウント：月次のみ"
             )
 
             # -----------------------------------------
@@ -1560,6 +2207,18 @@ def render_ad_search_view(
             # -----------------------------------------
             # レポート作成
             # -----------------------------------------
+            if (
+                st.session_state.get(
+                    "speed_report_period_start"
+                )
+                is not None
+            ):
+                print(
+                    "[SPEED] 広告指定 → 期間指定表示完了: "
+                    f"{perf_counter() - st.session_state.speed_report_period_start:.2f}秒"
+                )
+
+                st.session_state.speed_report_period_start = None
 
             if st.button(
                 "レポート作成",
@@ -1667,5 +2326,14 @@ def render_ad_search_view(
                 )
 
                 return True
+
+    # =====================================================
+    # 変更・停止依頼一覧
+    # =====================================================
+
+    if has_result_area:
+        _render_pending_change_requests(
+            ad_data,
+        )
 
     return False
