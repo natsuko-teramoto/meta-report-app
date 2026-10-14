@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from ui.report_config import BASIC_INFO_ITEMS
 from ui.report_common import build_report_period_label
 
@@ -44,12 +45,25 @@ def _render_basic_info_section(
             or "-"
         )
 
-    publication_start = (
-        ad_row.get(
-            "配信開始",
-            "",
+    # レガシー広告は最初の配信開始日を優先
+    start_value = ad_row.get("レポート配信開始日")
+
+    start_date = pd.to_datetime(
+        start_value,
+        errors="coerce",
+    )
+
+    # 通常広告は従来の配信開始日を使用
+    if pd.isna(start_date):
+        start_date = pd.to_datetime(
+            ad_row.get("配信開始"),
+            errors="coerce",
         )
-        or "-"
+
+    publication_start = (
+        start_date.strftime("%Y/%m/%d")
+        if pd.notna(start_date)
+        else "-"
     )
 
     appeal = (
@@ -87,12 +101,19 @@ def _render_basic_info_section(
     cumulative_days = "-"
 
     if report_period is not None:
-        cumulative_days = (
+
+        # レガシー広告は最初の配信開始日から計算
+        if pd.notna(start_date):
+            cumulative_start = start_date.date()
+        else:
+            cumulative_start = report_period.cumulative_start
+
+        cumulative_days = max(
             (
                 report_period.cumulative_end
-                - report_period.cumulative_start
-            ).days
-            + 1
+                - cumulative_start
+            ).days + 1,
+            0,
         )
 
     report_period_label = (

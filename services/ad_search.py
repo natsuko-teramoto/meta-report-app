@@ -464,6 +464,56 @@ def build_ad_search_data(master_data=None):
             else:
                 legacy_result["状態"] = "ACTIVE"
 
+    # =====================================================
+    # レガシー広告：同じ案件IDのキャンペーン名をまとめる
+    # =====================================================
+
+    if not legacy_result.empty:
+
+        campaign_names_by_case = (
+            legacy_result
+            .groupby("案件ID")["キャンペーン名"]
+            .agg(
+                lambda names: list(
+                    dict.fromkeys(
+                        name
+                        for name in names
+                        if name
+                    )
+                )
+            )
+            .to_dict()
+        )
+
+        legacy_result["同一案件キャンペーン名"] = (
+            legacy_result["案件ID"]
+            .map(campaign_names_by_case)
+        )
+
+        # 同じ案件IDの最も古い配信開始日を取得
+        start_dates = pd.to_datetime(
+            legacy_result["配信開始"],
+            errors="coerce",
+        )
+
+        earliest_start_by_case = (
+            start_dates
+            .groupby(legacy_result["案件ID"])
+            .min()
+            .to_dict()
+        )
+
+        legacy_result["レポート配信開始日"] = (
+            legacy_result["案件ID"]
+            .map(earliest_start_by_case)
+        )
+        print(
+            "[LEGACY DEBUG] A000154 配信開始日:",
+            legacy_result.loc[
+                legacy_result["案件ID"] == "A000154",
+                ["キャンペーン名", "配信開始", "レポート配信開始日"]
+            ].to_string(index=False)
+        )
 
     # =====================================================
     # 新広告 + レガシー広告
@@ -567,6 +617,8 @@ def build_ad_search_data(master_data=None):
         "データ種別",
         "ad_id",
         "キャンペーン名",
+        "同一案件キャンペーン名",
+        "レポート配信開始日",
 
         "案件ID",
         "Meta顧客ID",

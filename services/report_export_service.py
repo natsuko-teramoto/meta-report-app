@@ -79,7 +79,7 @@ def _build_cumulative_days(ad_row, report_period):
     if report_period is None:
         return "―"
     start = None
-    for key in ("配信開始", "配信開始日"):
+    for key in ("レポート配信開始日", "配信開始", "配信開始日"):
         raw = value_from_ad(ad_row, key, default="")
         if not raw:
             continue
@@ -98,7 +98,7 @@ def _build_cumulative_days(ad_row, report_period):
 def build_basic_info(ad_row, report_period, visibility):
     items = [
         ("customer_name", "顧客名", value_from_ad(ad_row, "顧客名", "customer_name")),
-        ("publication_start", "配信開始日", value_from_ad(ad_row, "配信開始", "配信開始日")),
+        ("publication_start", "配信開始日", value_from_ad(ad_row, "レポート配信開始日", "配信開始", "配信開始日")),
         ("cumulative_days", "累計配信日数", _build_cumulative_days(ad_row, report_period)),
         ("report_period", "レポート集計期間", format_period_label(report_period)),
         ("appeal", "訴求内容", value_from_ad(ad_row, "訴求内容")),

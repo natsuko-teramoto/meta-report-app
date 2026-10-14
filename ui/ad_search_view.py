@@ -74,6 +74,51 @@ def _render_pending_change_requests(
     if pending_df.empty:
         return
 
+    # =====================================================
+    # 表示順
+    # 未対応 → 完了
+    # 同じ対応状況の中では依頼日時の新しい順
+    # =====================================================
+
+    pending_df = pending_df.copy()
+
+    pending_df["_status_order"] = (
+        pending_df["対応状況"]
+        .astype(str)
+        .str.strip()
+        .map({
+            "未対応": 0,
+            "完了": 1,
+        })
+        .fillna(2)
+    )
+
+    pending_df["_request_datetime_sort"] = pd.to_datetime(
+        pending_df["依頼日時"],
+        errors="coerce",
+    )
+
+    pending_df = (
+        pending_df
+        .sort_values(
+            by=[
+                "_status_order",
+                "_request_datetime_sort",
+            ],
+            ascending=[
+                True,
+                False,
+            ],
+            na_position="last",
+        )
+        .drop(
+            columns=[
+                "_status_order",
+                "_request_datetime_sort",
+            ]
+        )
+    )
+
     st.divider()
 
     st.subheader(
@@ -1261,10 +1306,33 @@ def _render_search_results(
                     # 同じ案件に属する広告
                     # -----------------------------------------
 
-                    for _, ad_row in (
-                        case_ads.iterrows()
-                    ):
+                    # レガシー広告は同じ案件IDなら最新の配信設定だけ表示
+                    legacy_ads = case_ads[
+                        case_ads["データ種別"] == "LEGACY"
+                    ].copy()
 
+                    api_ads = case_ads[
+                        case_ads["データ種別"] != "LEGACY"
+                    ].copy()
+
+                    if not legacy_ads.empty:
+                        legacy_ads["_sort_date"] = pd.to_datetime(
+                            legacy_ads["配信開始"],
+                            errors="coerce",
+                        )
+
+                        latest_legacy = (
+                            legacy_ads
+                            .sort_values("_sort_date", na_position="first")
+                            .iloc[-1]
+                        )
+
+                        _render_ad_card(
+                            latest_legacy,
+                            slot_number,
+                        )
+
+                    for _, ad_row in api_ads.iterrows():
                         _render_ad_card(
                             ad_row,
                             slot_number,

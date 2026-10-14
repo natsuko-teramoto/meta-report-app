@@ -164,10 +164,7 @@ def _normalize_campaign_name(value):
     )
 
 
-def _filter_campaign(
-    df,
-    campaign_name,
-):
+def _filter_campaign(df, campaign_names):
 
     if df.empty:
         return df.copy()
@@ -175,11 +172,15 @@ def _filter_campaign(
     if "キャンペーン名" not in df.columns:
         return pd.DataFrame()
 
-    target_name = (
-        _normalize_campaign_name(
-            campaign_name
-        )
-    )
+    # 1件のキャンペーン名にも、複数件にも対応
+    if isinstance(campaign_names, str):
+        campaign_names = [campaign_names]
+
+    target_names = {
+        _normalize_campaign_name(name)
+        for name in campaign_names
+        if _normalize_campaign_name(name)
+    }
 
     normalized_names = (
         df["キャンペーン名"]
@@ -187,7 +188,7 @@ def _filter_campaign(
     )
 
     return df[
-        normalized_names == target_name
+        normalized_names.isin(target_names)
     ].copy()
 
 
@@ -858,12 +859,14 @@ def build_legacy_period_result(
         )
 
     campaign_name = str(
-        ad_row.get(
-            "キャンペーン名",
-            "",
-        )
-        or ""
+        ad_row.get("キャンペーン名", "") or ""
     ).strip()
+
+    campaign_names = ad_row.get("同一案件キャンペーン名")
+
+    if not isinstance(campaign_names, (list, tuple, set)) or not campaign_names:
+        campaign_names = [campaign_name]
+    print(f"[LEGACY DEBUG] 集計対象キャンペーン: {campaign_names}")  
 
     if not campaign_name:
         raise ValueError(
@@ -989,22 +992,26 @@ def build_legacy_period_result(
     monthly_campaign = (
         _filter_campaign(
             monthly_all,
-            campaign_name,
+            campaign_names,
         )
     )
 
     placement_campaign = (
         _filter_campaign(
             placement_all,
-            campaign_name,
+            campaign_names,
         )
     )
 
     daily_campaign = (
         _filter_campaign(
             daily_all,
-            campaign_name,
+            campaign_names,
         )
+    )
+    print(
+        "[LEGACY DEBUG] 月次キャンペーン別件数:",
+        monthly_campaign.groupby("キャンペーン名").size().to_dict()
     )
 
     if monthly_campaign.empty:
