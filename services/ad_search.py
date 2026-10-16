@@ -157,7 +157,8 @@ def _resolve_current_case_links(ads, cases, facilities):
 
     current = cases[["案件ID", "Meta顧客ID", "施設ID"]].copy()
     current["案件ID"] = current["案件ID"].map(_clean_text)
-    current = current[current["案件ID"] != ""]
+    used_case_ids = set(ads["案件ID"].map(_clean_text)) - {""}
+    current = current[current["案件ID"].isin(used_case_ids)]
     if current["案件ID"].duplicated().any():
         raise ValueError("案件マスタに案件IDの重複があります。")
 
