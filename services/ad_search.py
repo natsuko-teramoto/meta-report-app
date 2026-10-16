@@ -379,6 +379,22 @@ def build_ad_search_data(master_data=None):
             validate="many_to_one",
         )
 
+        # 配信履歴に残る旧施設名ではなく、現行施設マスタの名称を表示
+        if (
+            "施設ID" in new_result.columns
+            and {"施設ID", "施設名"}.issubset(facilities.columns)
+        ):
+            names = facilities[["施設ID", "施設名"]].copy()
+            if names["施設ID"].duplicated().any():
+                raise ValueError("施設マスタに施設IDの重複があります。")
+            name_by_id = names.set_index("施設ID")["施設名"]
+            latest_names = new_result["施設ID"].map(name_by_id)
+            if "施設名" not in new_result.columns:
+                new_result["施設名"] = ""
+            new_result["施設名"] = latest_names.where(
+                latest_names.notna(), new_result["施設名"],
+            )
+
         # データ種別
         new_result["データ種別"] = "API"
 
