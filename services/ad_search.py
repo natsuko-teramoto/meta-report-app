@@ -155,7 +155,7 @@ def _resolve_current_case_links(ads, cases, facilities):
     if not required.issubset(cases.columns):
         raise ValueError("案件マスタのID列が不足しています。")
 
-    current = cases[list(required)].copy()
+    current = cases[["案件ID", "Meta顧客ID", "施設ID"]].copy()
     current["案件ID"] = current["案件ID"].map(_clean_text)
     current = current[current["案件ID"] != ""]
     if current["案件ID"].duplicated().any():
@@ -170,6 +170,9 @@ def _resolve_current_case_links(ads, cases, facilities):
             owners, on="施設ID", how="left",
             suffixes=("", "_施設"), validate="many_to_one",
         )
+        missing = check["Meta顧客ID_施設"].isna() & (check["施設ID"].map(_clean_text) != "")
+        if missing.any():
+            raise ValueError("案件マスタが参照する施設IDが施設マスタにありません。")
         valid = check["Meta顧客ID_施設"].notna()
         mismatch = valid & (
             check["Meta顧客ID"].map(_clean_text)
