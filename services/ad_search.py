@@ -143,6 +143,56 @@ def _build_customer_directory(ad_data):
 
     return pd.DataFrame(rows)
 
+def _resolve_current_case_links(ads, cases, facilities):
+    """案件IDがある広告の検索・表示用M/Fを案件マスタの現行値に揃える。
+
+    Meta配信履歴やレガシー広告一覧の保存値は変更しない。
+    """
+    if ads.empty or cases.empty or "案件ID" not in ads.columns:
+        return ads.copy()
+
+    required = {"案件ID", "Meta顧客ID", "施設ID"}
+    if not required.issubset(cases.columns):
+        raise ValueError("案件マスタのID列が不足しています。")
+
+    current = cases[list(required)].copy()
+    current["案件ID"] = current["案件ID"].map(_clean_text)
+    current = current[current["案件ID"] != ""]
+    if current["案件ID"].duplicated().any():
+        raise ValueError("案件マスタに案件IDの重複があります。")
+
+    if not facilities.empty and {"施設ID", "Meta顧客ID"}.issubset(facilities.columns):
+        owners = facilities[["施設ID", "Meta顧客ID"]].copy()
+        owners = owners[owners["施設ID"].map(_clean_text) != ""]
+        if owners["施設ID"].duplicated().any():
+            raise ValueError("施設マスタに施設IDの重複があります。")
+        check = current.merge(
+            owners, on="施設ID", how="left",
+            suffixes=("", "_施設"), validate="many_to_one",
+        )
+        valid = check["Meta顧客ID_施設"].notna()
+        mismatch = valid & (
+            check["Meta顧客ID"].map(_clean_text)
+            != check["Meta顧客ID_施設"].map(_clean_text)
+        )
+        if mismatch.any():
+            raise ValueError("案件マスタに顧客と施設の不一致があります。")
+
+    result = ads.copy()
+    for column in ("Meta顧客ID", "施設ID"):
+        if column not in result.columns:
+            result[column] = ""
+    current = current.rename(columns={
+        "Meta顧客ID": "_現行顧客ID",
+        "施設ID": "_現行施設ID",
+    })
+    result = result.merge(current, on="案件ID", how="left", validate="many_to_one")
+    matched = result["_現行顧客ID"].notna()
+    result.loc[matched, "Meta顧客ID"] = result.loc[matched, "_現行顧客ID"]
+    result.loc[matched, "施設ID"] = result.loc[matched, "_現行施設ID"]
+    return result.drop(columns=["_現行顧客ID", "_現行施設ID"])
+
+
 # =========================================================
 # 広告検索用データ作成
 # =========================================================
@@ -274,7 +324,9 @@ def build_ad_search_data(master_data=None):
         # 補足情報だけを取得する。
         # -------------------------------------------------
 
-        new_result = meta_history.copy()
+        new_result = _resolve_current_case_links(
+            meta_history, cases, facilities,
+        )
 
         # 案件マスタから補足情報を追加
         case_extra_columns = [
@@ -342,7 +394,9 @@ def build_ad_search_data(master_data=None):
 
     if not legacy_ads.empty:
 
-        legacy_result = legacy_ads.copy()
+        legacy_result = _resolve_current_case_links(
+            legacy_ads, cases, facilities,
+        )
 
         # レガシー広告一覧のW/X/Y
         # Meta顧客ID / 施設ID / 案件ID を利用
