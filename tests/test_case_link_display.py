@@ -33,7 +33,7 @@ class CorrectedLinkTests(unittest.TestCase):
         self.assertEqual(data.iloc[0]["施設名"], "正施設")
         self.assertEqual(data.iloc[0]["ad_id"], "AD1")
         self.assertEqual(len(build_customer_results(data)), 1)
-        self.assertEqual(len(search_ads(data, customer="正法人")), 1)
+        self.assertEqual(len(search_ads(data, customer="正法人（正施設）")), 1)
 
     def test_history_input_unchanged(self):
         master = sample()
