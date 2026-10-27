@@ -1235,6 +1235,9 @@ def _apply_completed_detail_to_ad(
     # =====================================================
 
     if change_type == "配信操作":
+        # レガシー広告の状態はAD/AE列を正本とし、変更依頼では上書きしない。
+        if str(ad_data.at[ad_index, "データ種別"]).strip() == "LEGACY":
+            return
 
         operation = str(
             detail_row.get(
@@ -1252,21 +1255,19 @@ def _apply_completed_detail_to_ad(
         elif operation in {
             "クリエイティブ変更・顧客対応のため一時停止",
             "配信停止",
-        }:
-            ad_data.at[
-                ad_index,
-                "状態",
-            ] = "PAUSED"
-
-        elif operation in {
-            "期間終了をもって更新せず",
             "強制解約",
             "その他",
         }:
             ad_data.at[
                 ad_index,
                 "状態",
-            ] = "ENDED"
+            ] = "PAUSED"
+
+        elif operation == "期間終了をもって更新せず":
+            ad_data.at[
+                ad_index,
+                "状態",
+            ] = "COMPLETE"
 
         return
 
