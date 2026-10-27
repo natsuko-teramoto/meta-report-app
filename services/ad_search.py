@@ -434,35 +434,49 @@ def build_ad_search_data(master_data=None):
 
             legacy_result["データ種別"] = "LEGACY"
 
-            # -------------------------------------------------
-            # レガシー広告の状態
-            #
-            # Meta APIから状態を取得できないため、
-            # 配信終了日で判定する。
-            #
-            # 配信終了日 < 今日 → 配信終了
-            # それ以外         → ACTIVE
-            # -------------------------------------------------
-
+            # レガシー広告の状態は、広告単位の停止・確定情報を正本とする。
+            # AD: 出稿停止処理日 / AE: 確定消化金額
+            # 停止を最優先し、終了日超過のみではCOMPLETEとしない。
             today = pd.Timestamp.today().normalize()
+            stop_dates = legacy_result.get(
+                "出稿停止処理日",
+                pd.Series("", index=legacy_result.index),
+            ).astype(str).str.strip()
+            confirmed_spend = legacy_result.get(
+                "確定消化金額",
+                pd.Series("", index=legacy_result.index),
+            ).astype(str).str.strip()
+            start_dates = pd.to_datetime(
+                legacy_result.get(
+                    "配信開始", pd.Series("", index=legacy_result.index)
+                ), errors="coerce",
+            )
+            end_dates = pd.to_datetime(
+                legacy_result.get(
+                    "配信終了", pd.Series("", index=legacy_result.index)
+                ), errors="coerce",
+            )
+            has_stop = stop_dates.ne("") & stop_dates.ne("nan")
+            has_spend = confirmed_spend.ne("") & confirmed_spend.ne("nan")
 
-            if "配信終了" in legacy_result.columns:
-
-                end_dates = pd.to_datetime(
-                    legacy_result["配信終了"],
-                    errors="coerce",
-                )
-
-                legacy_result["状態"] = "ACTIVE"
-
-                legacy_result.loc[
-                    end_dates.notna()
-                    & (end_dates < today),
-                    "状態",
-                ] = "配信終了"
-
-            else:
-                legacy_result["状態"] = "ACTIVE"
+            legacy_result["状態"] = "状態未確定"
+            legacy_result.loc[
+                start_dates.notna()
+                & end_dates.notna()
+                & (start_dates <= today)
+                & (end_dates >= today),
+                "状態",
+            ] = "ACTIVE"
+            legacy_result.loc[
+                start_dates.notna() & (start_dates > today),
+                "状態",
+            ] = "開始前"
+            legacy_result.loc[
+                end_dates.notna() & (end_dates < today),
+                "状態",
+            ] = "終了情報未確定"
+            legacy_result.loc[has_spend, "状態"] = "COMPLETE"
+            legacy_result.loc[has_stop, "状態"] = "PAUSED"
 
     # =====================================================
     # レガシー広告：同じ案件IDのキャンペーン名をまとめる
@@ -642,6 +656,8 @@ def build_ad_search_data(master_data=None):
         "性別",
         "配信開始",
         "配信終了",
+        "出稿停止処理日",
+        "確定消化金額",
         "状態",
 
         "campaign_id",

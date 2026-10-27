@@ -1235,40 +1235,12 @@ def _apply_completed_detail_to_ad(
     # =====================================================
 
     if change_type == "配信操作":
-
-        operation = str(
-            detail_row.get(
-                "配信操作",
-                "",
-            ) or ""
-        ).strip()
-
-        if operation == "配信再開":
-            ad_data.at[
-                ad_index,
-                "状態",
-            ] = "ACTIVE"
-
-        elif operation in {
-            "クリエイティブ変更・顧客対応のため一時停止",
-            "配信停止",
-        }:
-            ad_data.at[
-                ad_index,
-                "状態",
-            ] = "PAUSED"
-
-        elif operation in {
-            "期間終了をもって更新せず",
-            "強制解約",
-            "その他",
-        }:
-            ad_data.at[
-                ad_index,
-                "状態",
-            ] = "ENDED"
-
+        # 配信状態は広告データ側を正本とする。
+        # API広告: Metaから取得した状態
+        # レガシー広告: AD/AE列と掲載期間による判定
+        # 変更依頼は履歴として残し、状態を上書きしない。
         return
+
 
 # =========================================================
 # 広告変更依頼：変更前 → 変更後 履歴再生
