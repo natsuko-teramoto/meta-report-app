@@ -447,10 +447,14 @@ def build_ad_search_data(master_data=None):
                 pd.Series("", index=legacy_result.index),
             ).astype(str).str.strip()
             start_dates = pd.to_datetime(
-                legacy_result.get("配信開始"), errors="coerce",
+                legacy_result.get(
+                    "配信開始", pd.Series("", index=legacy_result.index)
+                ), errors="coerce",
             )
             end_dates = pd.to_datetime(
-                legacy_result.get("配信終了"), errors="coerce",
+                legacy_result.get(
+                    "配信終了", pd.Series("", index=legacy_result.index)
+                ), errors="coerce",
             )
             has_stop = stop_dates.ne("") & stop_dates.ne("nan")
             has_spend = confirmed_spend.ne("") & confirmed_spend.ne("nan")
