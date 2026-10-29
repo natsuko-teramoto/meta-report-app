@@ -101,25 +101,25 @@ def create_api_meta_report_ppt(
     return save_path
 
 def get_api_ppt_filename(ad_row, report_period):
-        customer_name = customer_name_from_ad(ad_row, default="Meta広告")
-        safe_customer_name = (
-            str(customer_name)
-            .replace("/", "_")
-            .replace("\\", "_")
-            .replace(":", "_")
-        )
+    customer_name = customer_name_from_ad(ad_row, default="Meta広告")
+    safe_customer_name = (
+        str(customer_name)
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+    )
     
-        appeal = value_from_ad(ad_row, "訴求内容", "appeal", default="広告")
-        def _safe_filename_part(value):
-            text = str(value or "").strip()
-            for ch in '<>:"/\\|?*':
-                text = text.replace(ch, "_")
-            return text.rstrip(". ")
-        safe_appeal = _safe_filename_part(appeal)
-        file_period = (
-            f"{report_period.target_start.year}年{report_period.target_start.month}月{report_period.target_start.day}日～"
-            f"{report_period.target_end.year}年{report_period.target_end.month}月{report_period.target_end.day}日"
-        )
-        file_name = f"【Instagram広告レポート】{safe_customer_name} 様_{safe_appeal}（{file_period}）.pptx"
+    appeal = value_from_ad(ad_row, "訴求内容", "appeal", default="広告")
+    def _safe_filename_part(value):
+        text = str(value or "").strip()
+        for ch in '<>:"/\\|?*':
+            text = text.replace(ch, "_")
+        return text.rstrip(". ")
+    safe_appeal = _safe_filename_part(appeal)
+    file_period = (
+        f"{report_period.target_start.year}年{report_period.target_start.month}月{report_period.target_start.day}日～"
+        f"{report_period.target_end.year}年{report_period.target_end.month}月{report_period.target_end.day}日"
+    )
+    file_name = f"【Instagram広告レポート】{safe_customer_name} 様_{safe_appeal}（{file_period}）.pptx"
     
     return file_name
