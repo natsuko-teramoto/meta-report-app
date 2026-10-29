@@ -1310,6 +1310,8 @@ def _render_search_results(
                         case_ads["データ種別"] != "LEGACY"
                     ].copy()
 
+                    display_rows = []
+
                     if not legacy_ads.empty:
                         legacy_ads["_sort_date"] = pd.to_datetime(
                             legacy_ads["配信開始"],
@@ -1321,26 +1323,20 @@ def _render_search_results(
                             .sort_values("_sort_date", na_position="first")
                             .iloc[-1]
                         )
-
-                        _render_ad_card(
-                            latest_legacy,
-                            slot_number,
-                        )
-
-                    # ACTIVEを先頭に表示（状態の値自体は変更しない）
-                    if not api_ads.empty:
-                        api_ads["_active_first"] = (
-                            api_ads["状態"]
-                            .astype(str)
-                            .str.strip()
-                            .ne("ACTIVE")
-                        )
-                        api_ads = api_ads.sort_values(
-                            "_active_first",
-                            kind="stable",
-                        )
+                        display_rows.append(latest_legacy)
 
                     for _, ad_row in api_ads.iterrows():
+                        display_rows.append(ad_row)
+
+                    # データ種別に関係なくACTIVEを先頭にする。
+                    # ACTIVE以外の広告は元の表示順を維持する。
+                    display_rows.sort(
+                        key=lambda row: (
+                            str(row.get("状態", "")).strip() != "ACTIVE"
+                        )
+                    )
+
+                    for ad_row in display_rows:
                         _render_ad_card(
                             ad_row,
                             slot_number,
