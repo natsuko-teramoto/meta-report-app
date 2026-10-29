@@ -354,12 +354,25 @@ def render_change_request_view(
     delivery_reason = ""
 
 
+    # PAUSED: 再開と設定変更を一度に依頼できるよう先に操作を選ぶ
+    if status == "PAUSED" and request_category == "配信再開・停止":
+        delivery_request = st.radio(
+            "配信について",
+            options=["配信再開", "配信停止"],
+            index=None,
+            key="change_request_delivery_paused",
+            horizontal=True,
+        )
+
     # ==================================================
     # 1. 設定・広告内容変更
     # 複数選択可
     # ==================================================
 
-    if request_category == "設定・広告内容変更":
+    if (
+        request_category == "設定・広告内容変更"
+        or (status == "PAUSED" and delivery_request == "配信再開")
+    ):
 
         st.markdown(
             "**設定・広告内容変更（複数選択可）**"
@@ -938,89 +951,33 @@ def render_change_request_view(
             )
 
     # ==================================================
-    # 2. 配信停止
+    # 2. 配信停止理由（ステータス共通）
     # ==================================================
+    if request_category in ["配信停止", "配信再開・停止"]:
+        if status != "PAUSED":
+            delivery_request = "配信停止"
 
-    elif request_category in [
-        "配信停止",
-        "配信再開・停止",
-    ]:
-
-
-        # --------------------------------------------------
-        # ACTIVE広告
-        # --------------------------------------------------
-
-        if status == "ACTIVE":
-
-            st.markdown(
-                "**配信停止理由**"
-            )
-
-            delivery_request = st.selectbox(
+        if delivery_request == "配信停止":
+            stop_reason = st.selectbox(
                 "配信停止理由",
                 options=[
                     "",
-                    "期間終了をもって更新せず",
-                    "クリエイティブ変更・顧客対応のため一時停止",
+                    "契約期間終了をもって更新せず",
+                    "期間終了に伴い掲載アカウントを変更するため",
+                    "クリエイティブ・顧客対応のため一時停止",
                     "強制解約",
                     "その他",
                 ],
-                index=0,
-                key="change_request_delivery_active",
-                format_func=lambda value: (
-                    "選択してください"
-                    if value == ""
-                    else value
-                ),
-                label_visibility="collapsed",
+                key="change_request_stop_reason",
+                format_func=lambda value: "選択してください" if not value else value,
             )
-
-            if delivery_request == "その他":
-
+            delivery_reason = stop_reason
+            if stop_reason == "その他":
                 delivery_reason = st.text_input(
                     "その他の理由",
                     key="change_request_delivery_other",
                     placeholder="理由を入力してください",
                 )
-
-
-        # --------------------------------------------------
-        # PAUSED広告
-        # --------------------------------------------------
-
-        elif status == "PAUSED":
-
-            st.markdown(
-                "**配信について**"
-            )
-
-            delivery_request = st.selectbox(
-                "配信について",
-                options=[
-                    "",
-                    "配信再開",
-                    "配信停止",
-                    "強制解約",
-                ],
-                index=0,
-                key="change_request_delivery_paused",
-                format_func=lambda value: (
-                    "選択してください"
-                    if value == ""
-                    else value
-                ),
-                label_visibility="collapsed",
-            )
-
-            if delivery_request == "配信停止":
-
-                delivery_reason = st.text_input(
-                    "停止理由",
-                    key="change_request_delivery_pause_reason",
-                    placeholder="理由を入力してください",
-                )
-
 
     # ==================================================
     # 選択中の依頼内容
@@ -1100,9 +1057,12 @@ def render_change_request_view(
     # 設定・広告内容変更
     # ==================================================
 
-    if request_category == "設定・広告内容変更":
+    if (
+        request_category == "設定・広告内容変更"
+        or (status == "PAUSED" and delivery_request == "配信再開")
+    ):
 
-        if not selected_types:
+        if not selected_types and request_category == "設定・広告内容変更":
             validation_errors.append(
                 "変更する項目を1つ以上選択してください。"
             )
@@ -1283,36 +1243,13 @@ def render_change_request_view(
 
 
     # ==================================================
-    # 配信停止・再開
+    # 配信停止・再開（設定変更と同時申請可）
     # ==================================================
-
-    elif request_category in [
-        "配信停止",
-        "配信再開・停止",
-    ]:
-
+    if request_category in ["配信停止", "配信再開・停止"]:
         if not delivery_request:
-            validation_errors.append(
-                "配信について選択してください。"
-            )
-
-        if (
-            status == "ACTIVE"
-            and delivery_request == "その他"
-            and not delivery_reason.strip()
-        ):
-            validation_errors.append(
-                "停止理由を入力してください。"
-            )
-
-        if (
-            status == "PAUSED"
-            and delivery_request == "配信停止"
-            and not delivery_reason.strip()
-        ):
-            validation_errors.append(
-                "停止理由を入力してください。"
-            )
+            validation_errors.append("配信について選択してください。")
+        if delivery_request == "配信停止" and not delivery_reason.strip():
+            validation_errors.append("配信停止理由を選択・入力してください。")
 
     # ==================================================
     # 依頼する
