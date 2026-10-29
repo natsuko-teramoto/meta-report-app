@@ -95,10 +95,23 @@ def _build_cumulative_days(ad_row, report_period):
     return f"{max(days, 0):,}日"
 
 
+
+def _format_publication_start(ad_row):
+    """Use the first valid start date and omit time/NaT from PPT output."""
+    for key in ("レポート配信開始日", "配信開始", "配信開始日"):
+        raw = value_from_ad(ad_row, key, default="")
+        if not raw or raw.lower() in {"nat", "none", "nan"}:
+            continue
+        parsed = pd.to_datetime(raw, errors="coerce")
+        if pd.notna(parsed):
+            return f"{parsed.year}/{parsed.month:02d}/{parsed.day:02d}"
+    return "―"
+
+
 def build_basic_info(ad_row, report_period, visibility):
     items = [
         ("customer_name", "顧客名", value_from_ad(ad_row, "顧客名", "customer_name")),
-        ("publication_start", "配信開始日", value_from_ad(ad_row, "レポート配信開始日", "配信開始", "配信開始日")),
+        ("publication_start", "配信開始日", _format_publication_start(ad_row)),
         ("cumulative_days", "累計配信日数", _build_cumulative_days(ad_row, report_period)),
         ("report_period", "レポート集計期間", format_period_label(report_period)),
         ("appeal", "訴求内容", value_from_ad(ad_row, "訴求内容")),
