@@ -1327,6 +1327,19 @@ def _render_search_results(
                             slot_number,
                         )
 
+                    # ACTIVEを先頭に表示（状態の値自体は変更しない）
+                    if not api_ads.empty:
+                        api_ads["_active_first"] = (
+                            api_ads["状態"]
+                            .astype(str)
+                            .str.strip()
+                            .ne("ACTIVE")
+                        )
+                        api_ads = api_ads.sort_values(
+                            "_active_first",
+                            kind="stable",
+                        )
+
                     for _, ad_row in api_ads.iterrows():
                         _render_ad_card(
                             ad_row,
