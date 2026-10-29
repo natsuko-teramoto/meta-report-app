@@ -933,34 +933,29 @@ def _render_ad_card(
 
                 with request_col:
 
-                    if status in [
-                        "ACTIVE",
-                        "PAUSED",
-                    ]:
+                    with st.container(
+                        key=f"change-request-button-{slot_number}-{ad_key}"
+                    ):
 
-                        with st.container(
-                            key=f"change-request-button-{slot_number}-{ad_key}"
+                        if st.button(
+                            "変更・停止依頼",
+                            key=(
+                                f"change_request_"
+                                f"{slot_number}_"
+                                f"{ad_key}"
+                            ),
+                            use_container_width=True,
                         ):
 
-                            if st.button(
-                                "変更・停止依頼",
-                                key=(
-                                    f"change_request_"
-                                    f"{slot_number}_"
-                                    f"{ad_key}"
-                                ),
-                                use_container_width=True,
-                            ):
+                            st.session_state[
+                                "change_request_ad_key"
+                            ] = ad_key
 
-                                st.session_state[
-                                    "change_request_ad_key"
-                                ] = ad_key
+                            st.session_state[
+                                "change_request_open"
+                            ] = True
 
-                                st.session_state[
-                                    "change_request_open"
-                                ] = True
-
-                                st.rerun()
+                            st.rerun()
 
                 with history_col:
 
