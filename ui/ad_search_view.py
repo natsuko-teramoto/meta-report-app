@@ -933,34 +933,29 @@ def _render_ad_card(
 
                 with request_col:
 
-                    if status in [
-                        "ACTIVE",
-                        "PAUSED",
-                    ]:
+                    with st.container(
+                        key=f"change-request-button-{slot_number}-{ad_key}"
+                    ):
 
-                        with st.container(
-                            key=f"change-request-button-{slot_number}-{ad_key}"
+                        if st.button(
+                            "変更・停止依頼",
+                            key=(
+                                f"change_request_"
+                                f"{slot_number}_"
+                                f"{ad_key}"
+                            ),
+                            use_container_width=True,
                         ):
 
-                            if st.button(
-                                "変更・停止依頼",
-                                key=(
-                                    f"change_request_"
-                                    f"{slot_number}_"
-                                    f"{ad_key}"
-                                ),
-                                use_container_width=True,
-                            ):
+                            st.session_state[
+                                "change_request_ad_key"
+                            ] = ad_key
 
-                                st.session_state[
-                                    "change_request_ad_key"
-                                ] = ad_key
+                            st.session_state[
+                                "change_request_open"
+                            ] = True
 
-                                st.session_state[
-                                    "change_request_open"
-                                ] = True
-
-                                st.rerun()
+                            st.rerun()
 
                 with history_col:
 
@@ -1315,6 +1310,8 @@ def _render_search_results(
                         case_ads["データ種別"] != "LEGACY"
                     ].copy()
 
+                    display_rows = []
+
                     if not legacy_ads.empty:
                         legacy_ads["_sort_date"] = pd.to_datetime(
                             legacy_ads["配信開始"],
@@ -1326,13 +1323,20 @@ def _render_search_results(
                             .sort_values("_sort_date", na_position="first")
                             .iloc[-1]
                         )
-
-                        _render_ad_card(
-                            latest_legacy,
-                            slot_number,
-                        )
+                        display_rows.append(latest_legacy)
 
                     for _, ad_row in api_ads.iterrows():
+                        display_rows.append(ad_row)
+
+                    # データ種別に関係なくACTIVEを先頭にする。
+                    # ACTIVE以外の広告は元の表示順を維持する。
+                    display_rows.sort(
+                        key=lambda row: (
+                            str(row.get("状態", "")).strip() != "ACTIVE"
+                        )
+                    )
+
+                    for ad_row in display_rows:
                         _render_ad_card(
                             ad_row,
                             slot_number,
