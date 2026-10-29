@@ -323,6 +323,10 @@ def render_change_request_view(
             "配信再開",
             "配信停止",
         ]
+    elif status in ["COMPLETE", "終了情報未確定"]:
+        request_category_options = [
+            "配信停止",
+        ]
     else:
         request_category_options = [
             "設定・広告内容変更",
